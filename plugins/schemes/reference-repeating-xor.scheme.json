@@ -1,0 +1,14 @@
+{
+  "id": "reference.repeating-xor.a55a",
+  "displayName": "Reference repeating XOR (A5 5A)",
+  "algorithmId": "builtin.repeating-xor",
+  "algorithmVersion": "1.0",
+  "parameterSource": {
+    "kind": "project-reference",
+    "reference": "plugins/schemes/reference-repeating-xor.scheme.json",
+    "notes": "A deterministic pipeline example; it is not a game compatibility claim."
+  },
+  "parameters": {
+    "keyHex": "A55A"
+  }
+}

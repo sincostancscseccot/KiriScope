@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
+    <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
+    <ProjectReference Include="..\KiriScope.Plugins.Abstractions\KiriScope.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

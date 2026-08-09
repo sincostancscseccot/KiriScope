@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0",
+  "id": "kiriscope.reference",
+  "displayName": "KiriScope Reference Knowledge Base",
+  "schemes": [
+    {
+      "id": "reference.repeating-xor.a55a",
+      "revision": "1.0.0",
+      "displayName": "Reference repeating XOR (A5 5A)",
+      "schemeFile": "schemes/reference-repeating-xor.scheme.json",
+      "schemeSha256": "142520257e89073c07c80f19ac4718231c5e1968c1fd6874c8a3a4c396fd8c53",
+      "algorithmId": "builtin.repeating-xor",
+      "algorithmVersion": "1.0",
+      "status": "ReferenceOnly",
+      "applicability": [
+        {
+          "targetId": "reference.synthetic",
+          "targetVersion": "1.0",
+          "notes": "Synthetic test data only; this is not a commercial-title compatibility statement."
+        }
+      ],
+      "evidence": [],
+      "supersedes": []
+    }
+  ],
+  "compatibility": [
+    {
+      "targetId": "reference.synthetic",
+      "targetVersion": "1.0",
+      "schemeId": "reference.repeating-xor.a55a",
+      "schemeRevision": "1.0.0",
+      "status": "ReferenceOnly",
+      "evidence": [],
+      "limitations": "This entry documents a deterministic reference pipeline only. It does not claim compatibility with any game or released product."
+    }
+  ]
+}

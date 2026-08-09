@@ -1,0 +1,12 @@
+{
+  "id": "example.content-filter.scheme",
+  "displayName": "Example content-filter scheme",
+  "algorithmId": "example.content-filter",
+  "algorithmVersion": "0.1.0",
+  "parameterSource": {
+    "kind": "synthetic-template",
+    "reference": "plugins/templates/content-filter",
+    "notes": "Synthetic parameters only; this placeholder is not executable through the current built-in scheme loader."
+  },
+  "parameters": {}
+}

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KiriScope.Analysis\KiriScope.Analysis.csproj" />
+    <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
+    <ProjectReference Include="..\KiriScope.Filters.BuiltIn\KiriScope.Filters.BuiltIn.csproj" />
+    <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
+    <ProjectReference Include="..\KiriScope.Xp3\KiriScope.Xp3.csproj" />
+  </ItemGroup>
+
+</Project>

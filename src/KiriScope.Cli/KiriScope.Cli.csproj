@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\KiriScope.Analysis\KiriScope.Analysis.csproj" />
+    <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
+    <ProjectReference Include="..\KiriScope.Integrations\KiriScope.Integrations.csproj" />
+    <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
+    <ProjectReference Include="..\KiriScope.Knowledge\KiriScope.Knowledge.csproj" />
+    <ProjectReference Include="..\KiriScope.Runtime\KiriScope.Runtime.csproj" />
+    <ProjectReference Include="..\KiriScope.Xp3\KiriScope.Xp3.csproj" />
+    <ProjectReference Include="..\KiriScope.Resources\KiriScope.Resources.csproj" />
+    <ProjectReference Include="..\KiriScope.Filters.BuiltIn\KiriScope.Filters.BuiltIn.csproj" />
+    <ProjectReference Include="..\KiriScope.Worker.X86\KiriScope.Worker.X86.csproj" ReferenceOutputAssembly="false" Condition="'$(RuntimeIdentifier)' == ''" />
+    <ProjectReference Include="..\KiriScope.Worker.X64\KiriScope.Worker.X64.csproj" ReferenceOutputAssembly="false" Condition="'$(RuntimeIdentifier)' == ''" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\KiriScope.Worker.X86\bin\$(Configuration)\net10.0-windows\KiriScope.Worker.X86.*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\KiriScope.Worker.X64\bin\$(Configuration)\net10.0-windows\KiriScope.Worker.X64.*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

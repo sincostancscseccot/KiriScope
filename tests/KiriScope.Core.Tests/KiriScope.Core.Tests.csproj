@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\KiriScope.Core\KiriScope.Core.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.IO\KiriScope.IO.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Xp3\KiriScope.Xp3.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Resources\KiriScope.Resources.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Filters.BuiltIn\KiriScope.Filters.BuiltIn.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Cli\KiriScope.Cli.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Analysis\KiriScope.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Integrations\KiriScope.Integrations.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Knowledge\KiriScope.Knowledge.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Runtime\KiriScope.Runtime.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Worker.Protocol\KiriScope.Worker.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Worker.X86\KiriScope.Worker.X86.csproj" />
+    <ProjectReference Include="..\..\src\KiriScope.Worker.X64\KiriScope.Worker.X64.csproj" />
+  </ItemGroup>
+
+</Project>

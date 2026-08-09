@@ -1,0 +1,47 @@
+# .NET build outputs
+bin/
+obj/
+.vs/
+TestResults/
+coverage/
+
+# IDE and user-local state
+*.user
+*.suo
+*.userprefs
+.idea/
+.vscode/settings.json
+
+# KiriScope local projects and generated artifacts
+workspaces/
+artifacts/
+reports/
+exports/
+captures/
+logs/
+
+# Game archives and extracted resources must not be committed
+*.xp3
+*.pck
+*.tlg
+*.psb
+*.amv
+*.pimg
+
+# Windows Git matches `*.xp3` case-insensitively, so retain the source project
+# whose directory name ends in `.Xp3` while continuing to ignore game archives.
+!src/KiriScope.Xp3/
+!src/KiriScope.Xp3/**
+src/KiriScope.Xp3/bin/
+src/KiriScope.Xp3/obj/
+
+# Runtime dumps and reverse-engineering databases
+*.dmp
+*.pml
+*.gpr
+*.rep/
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store

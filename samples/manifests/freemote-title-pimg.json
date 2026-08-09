@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "1.0",
+  "id": "freemote.samples.title-pimg",
+  "kind": "public-format-regression",
+  "license": "CC0-1.0",
+  "sourceRepository": "https://github.com/Dual-Vector-Foil/FreeMote.Samples",
+  "licenseUrl": "https://github.com/Dual-Vector-Foil/FreeMote.Samples/blob/main/LICENSE",
+  "downloadUrl": "https://raw.githubusercontent.com/Dual-Vector-Foil/FreeMote.Samples/main/pimg/%5BTLG%5Dtitle.pimg",
+  "fileName": "[TLG]title.pimg",
+  "length": 1991684,
+  "sha256": "476b71ee068028def6e9f4667b2888d532a41f5bc584aab51e39ffb440bd7d2b",
+  "expected": {
+    "stage": "ContainerIdentified",
+    "isPimgCandidate": true,
+    "resourceCount": 16,
+    "tlg5ResourceCount": 16,
+    "tlg6ResourceCount": 0
+  },
+  "notes": "The binary itself is not committed. Download it only into an ignored local workspace, verify its SHA-256, and use psb profile for read-only regression."
+}

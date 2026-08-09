@@ -1,0 +1,97 @@
+# 快速上手
+
+KiriScope 是 Windows 上的 KiriKiri 资源分析工作台。请只分析你拥有或已获授权的副本。默认工作流是只读的；任何生成文件的命令都要求一个**不存在**、且不位于输入目录内的输出路径。
+
+## 选择启动方式
+
+### 便携版或安装版
+
+安装版完成后，从开始菜单启动 `KiriScope`；便携版解压后运行 `KiriScope.Gui.exe`。命令行程序位于同一目录的 `KiriScope.Cli.exe`，不需要额外安装 .NET 运行时。
+
+先确认版本：
+
+```powershell
+.\KiriScope.Cli.exe version
+```
+
+### 从源码运行
+
+需要 Windows 和 .NET 10 SDK：
+
+```powershell
+dotnet restore .\KiriScope.slnx
+dotnet build .\KiriScope.slnx -c Release
+dotnet run --project .\src\KiriScope.Cli\KiriScope.Cli.csproj -- version
+```
+
+## 第一次分析
+
+用 GUI 时，点击 **Open resource...**，选择一个 PNG、BMP、TLG、PSB/PIMG 或其他资源。左侧会显示证据等级和诊断；只有在安全转换可用时，**Convert selected to PNG...** 才会启用。
+
+CLI 的等价只读命令：
+
+```powershell
+# 识别文件、计算哈希并探测容器
+.\KiriScope.Cli.exe probe "D:\AuthorizedGame\data.xp3"
+
+# 验证单个资源的结构
+.\KiriScope.Cli.exe verify "D:\AuthorizedGame\image.tlg"
+
+# 读取 XP3 索引；不会提取条目
+.\KiriScope.Cli.exe xp3 list "D:\AuthorizedGame\data.xp3"
+
+# 读取 PSB/PIMG 的根资源与嵌入格式元数据
+.\KiriScope.Cli.exe psb profile "D:\AuthorizedGame\scene.pimg"
+```
+
+`verify` 的成功等级很重要：`ContainerIdentified` 只表示结构被识别；`FormatValidated` 才表示完成相应格式的完整验证。TLG6 当前只验证容器和元数据，不宣称已完成原生像素解码。
+
+## 生成新文件
+
+下面的命令只写入你指定的新输出位置。请不要把输出放进游戏目录或输入目录树。
+
+```powershell
+# 从未标记为加密的 XP3 中提取到一个全新目录
+.\KiriScope.Cli.exe xp3 extract "D:\AuthorizedGame\data.xp3" "D:\KiriScopeOutput\data"
+
+# 导出 PIMG/PSB 的所有可验证根资源
+.\KiriScope.Cli.exe psb extract-all "D:\AuthorizedGame\scene.pimg" "D:\KiriScopeOutput\scene"
+
+# 转换标准、未加密 TLG5；输出 PNG 必须尚不存在
+.\KiriScope.Cli.exe convert tlg5-to-png "D:\AuthorizedGame\image.tlg" "D:\KiriScopeOutput\image.png"
+```
+
+对作品专用的过滤方案，使用已记录来源和版本的 scheme JSON；不要把推测出的密钥或未验证参数当作兼容性结论：
+
+```powershell
+.\KiriScope.Cli.exe xp3 extract "D:\AuthorizedGame\data.xp3" "D:\KiriScopeOutput\filtered" `
+  --scheme ".\plugins\schemes\reference-repeating-xor.scheme.json"
+```
+
+## 静态分析与运行时证据
+
+静态分析不会执行输入二进制：
+
+```powershell
+.\KiriScope.Cli.exe analyze pe "D:\AuthorizedGame\Game.exe"
+.\KiriScope.Cli.exe analyze archive "D:\AuthorizedGame\Game.exe" "D:\KiriScopeReports\game-static.json"
+```
+
+运行时采集默认关闭，仅采集你拥有或获授权进程的进程/模块元数据；它不注入、不读内存、不暂停或结束目标：
+
+```powershell
+.\KiriScope.Cli.exe analyze runtime inspect 1234
+.\KiriScope.Cli.exe analyze runtime snapshot 1234 "D:\KiriScopeReports\runtime.json" --enable-runtime-capture
+```
+
+如需文件访问线索，请自行用受信任工具导出 ProcMon CSV，再离线导入。KiriScope 不会自动启动 ProcMon 或加载其驱动。详见[运行时证据采集](../runtime/RUNTIME_EVIDENCE.md)。
+
+## 下一步
+
+- [PSB/PIMG 结构验证与导出](../formats/PSB_PIMG.md)
+- [XP3 重打包的范围与限制](../formats/XP3_PACKING.md)
+- [内容过滤器与方案验证](../filters/CX_ENCRYPTION.md)
+- [知识库与批量只读扫描](../knowledge/KNOWLEDGE_BASE.md)
+- [Windows 便携版、安装包和签名验证](../development/PACKAGING.md)
+
+请保留输入哈希、工具版本、方案文件和输出 JSON 报告。它们比文件名更适合作为可复现研究结论的依据。

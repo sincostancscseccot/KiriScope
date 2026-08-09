@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KiriScope.Analysis/KiriScope.Analysis.csproj" />
+    <Project Path="src/KiriScope.Cli/KiriScope.Cli.csproj" />
+    <Project Path="src/KiriScope.Core/KiriScope.Core.csproj" />
+    <Project Path="src/KiriScope.Filters.BuiltIn/KiriScope.Filters.BuiltIn.csproj" />
+    <Project Path="src/KiriScope.Gui/KiriScope.Gui.csproj" />
+    <Project Path="src/KiriScope.IO/KiriScope.IO.csproj" />
+    <Project Path="src/KiriScope.Integrations/KiriScope.Integrations.csproj" />
+    <Project Path="src/KiriScope.Knowledge/KiriScope.Knowledge.csproj" />
+    <Project Path="src/KiriScope.Plugins.Abstractions/KiriScope.Plugins.Abstractions.csproj" />
+    <Project Path="src/KiriScope.Resources/KiriScope.Resources.csproj" />
+    <Project Path="src/KiriScope.Runtime/KiriScope.Runtime.csproj" />
+    <Project Path="src/KiriScope.Worker.Protocol/KiriScope.Worker.Protocol.csproj" />
+    <Project Path="src/KiriScope.Worker.X64/KiriScope.Worker.X64.csproj" />
+    <Project Path="src/KiriScope.Worker.X86/KiriScope.Worker.X86.csproj" />
+    <Project Path="src/KiriScope.Xp3/KiriScope.Xp3.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KiriScope.Core.Tests/KiriScope.Core.Tests.csproj" />
+  </Folder>
+</Solution>

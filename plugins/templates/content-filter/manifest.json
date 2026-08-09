@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1.0",
+  "id": "example.content-filter",
+  "version": "0.1.0",
+  "kind": "ContentFilter",
+  "entryAssembly": "Example.ContentFilter.dll",
+  "entryType": "Example.ContentFilter.ExampleContentFilter",
+  "factoryType": "Example.ContentFilter.ExampleContentFilterFactory",
+  "targetFramework": "net10.0",
+  "abstractionsApiVersion": "1.0",
+  "source": "Replace with an auditable source location.",
+  "license": "Replace with the applicable license identifier.",
+  "capabilities": {
+    "networkAccess": false,
+    "processAccess": false,
+    "runtimeCapture": false,
+    "filesystemWrites": false,
+    "bufferTransformOnly": true
+  },
+  "notes": "Template metadata only. KiriScope does not auto-discover or auto-load external DLLs."
+}
