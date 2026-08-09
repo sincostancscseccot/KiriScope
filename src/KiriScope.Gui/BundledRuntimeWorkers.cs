@@ -27,7 +27,7 @@ internal static class BundledRuntimeWorkers
 
         if (!hasX64 || !hasX86)
         {
-            throw new InvalidDataException("The single-file GUI bundle does not contain both runtime workers.");
+            throw new InvalidDataException("单文件 GUI 包未包含两个运行时工作进程。");
         }
 
         var x64Path = await ExtractResourceAsync(assembly, X64ResourceName, "KiriScope.Worker.X64.exe", cancellationToken).ConfigureAwait(false);
@@ -42,7 +42,7 @@ internal static class BundledRuntimeWorkers
         CancellationToken cancellationToken)
     {
         await using var source = assembly.GetManifestResourceStream(resourceName)
-            ?? throw new InvalidDataException($"Missing embedded runtime worker resource: {resourceName}.");
+            ?? throw new InvalidDataException($"缺少内嵌的运行时工作进程资源：{resourceName}。");
 
         var rootDirectory = Path.Combine(Path.GetTempPath(), "KiriScope", "runtime-workers");
         Directory.CreateDirectory(rootDirectory);
@@ -117,7 +117,7 @@ internal static class BundledRuntimeWorkers
         var actualSha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false));
         if (!string.Equals(actualSha256, expectedSha256, StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"Extracted runtime worker hash mismatch: {path}.");
+            throw new InvalidDataException($"展开的运行时工作进程 SHA-256 校验不匹配：{path}。");
         }
     }
 }

@@ -4,7 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="KiriScope" Height="620" Width="980" MinHeight="480" MinWidth="760">
+        Title="KiriScope 资源分析工作台" Height="620" Width="980" MinHeight="480" MinWidth="760">
     <Grid Margin="28">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -16,29 +16,29 @@
         <DockPanel>
             <TextBlock FontSize="28" FontWeight="SemiBold" Text="KiriScope" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Padding="14,6" Click="OpenResourceButton_Click" Content="Open resource…" />
-                <Button x:Name="ConvertBmpButton" Margin="8,0,0,0" Padding="14,6" Click="ConvertBmpButton_Click" Content="Convert selected to PNG…" IsEnabled="False" />
+                <Button Padding="14,6" Click="OpenResourceButton_Click" Content="打开资源…" />
+                <Button x:Name="ConvertBmpButton" Margin="8,0,0,0" Padding="14,6" Click="ConvertBmpButton_Click" Content="将所选资源转换为 PNG…" IsEnabled="False" />
             </StackPanel>
         </DockPanel>
         <TextBlock Grid.Row="1" Margin="0,6,0,18" Foreground="Gray"
-                   Text="KiriKiri resource analysis workbench — stage 2 in progress" />
-        <Expander Grid.Row="2" Margin="0,0,0,16" Padding="12" Header="Runtime evidence (explicit, read-only, isolated worker)">
+                   Text="KiriKiri 资源分析、验证与可复现研究工作台" />
+        <Expander Grid.Row="2" Margin="0,0,0,16" Padding="12" Header="运行时证据（显式授权、只读、隔离工作进程）">
             <StackPanel>
-                <TextBlock Foreground="#FF555555" Text="Choose one PID that you own or are authorized to analyse. The worker reads process and module metadata only; it does not inject, read memory, start, suspend, or stop the target." TextWrapping="Wrap" />
+                <TextBlock Foreground="#FF555555" Text="请选择你拥有或已获授权分析的 PID。工作进程只读取进程和模块元数据；不会注入、读取内存、启动、暂停或结束目标。" TextWrapping="Wrap" />
                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                     <TextBlock VerticalAlignment="Center" Text="PID:" />
                     <TextBox x:Name="RuntimePidText" Width="130" Margin="8,0,12,0" />
-                    <Button Margin="0,0,12,0" Padding="14,6" Content="Inspect target" Click="InspectRuntimeTargetButton_Click" />
-                    <CheckBox x:Name="RuntimeConsentCheck" VerticalAlignment="Center" Content="I own or am authorized to analyse this process" Checked="RuntimeConsentCheck_Changed" Unchecked="RuntimeConsentCheck_Changed" />
-                    <Button x:Name="CaptureRuntimeButton" Margin="12,0,0,0" Padding="14,6" Content="Capture to new archive..." Click="CaptureRuntimeButton_Click" IsEnabled="False" />
+                    <Button Margin="0,0,12,0" Padding="14,6" Content="检查目标" Click="InspectRuntimeTargetButton_Click" />
+                    <CheckBox x:Name="RuntimeConsentCheck" VerticalAlignment="Center" Content="我拥有或已获授权分析此进程" Checked="RuntimeConsentCheck_Changed" Unchecked="RuntimeConsentCheck_Changed" />
+                    <Button x:Name="CaptureRuntimeButton" Margin="12,0,0,0" Padding="14,6" Content="采集到新建归档…" Click="CaptureRuntimeButton_Click" IsEnabled="False" />
                 </StackPanel>
-                <TextBlock x:Name="RuntimeStatusText" Margin="0,8,0,0" Foreground="#FF555555" Text="Runtime capture is disabled by default." TextWrapping="Wrap" />
+                <TextBlock x:Name="RuntimeStatusText" Margin="0,8,0,0" Foreground="#FF555555" Text="运行时采集默认关闭。" TextWrapping="Wrap" />
             </StackPanel>
         </Expander>
         <Border Grid.Row="3" Padding="12" Margin="0,0,0,16" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
             <StackPanel>
-                <TextBlock x:Name="SelectedFileText" FontWeight="SemiBold" Text="No resource selected" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="StatusText" Margin="0,5,0,0" Foreground="#FF555555" Text="Open a PNG, BMP, TLG, PSB, or other resource to inspect its evidence status." TextWrapping="Wrap" />
+                <TextBlock x:Name="SelectedFileText" FontWeight="SemiBold" Text="尚未选择资源" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="StatusText" Margin="0,5,0,0" Foreground="#FF555555" Text="打开 PNG、BMP、TLG、PSB 或其他资源以检查其证据状态。" TextWrapping="Wrap" />
             </StackPanel>
         </Border>
         <Grid Grid.Row="4">
@@ -48,13 +48,13 @@
             </Grid.ColumnDefinitions>
             <Border Padding="16" Margin="0,0,8,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="Validation report" />
+                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="验证报告" />
                     <TextBox x:Name="ReportText" Margin="0,12,0,0" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
                 </DockPanel>
             </Border>
             <Border Grid.Column="1" Padding="16" Margin="8,0,0,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="Preview" />
+                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="预览" />
                     <ScrollViewer Margin="0,12,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                         <Image x:Name="PreviewImage" Stretch="None" />
                     </ScrollViewer>

@@ -25,8 +25,8 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Open a resource for validation",
-            Filter = "Resource files|*.png;*.bmp;*.tlg;*.psb;*.pimg;*.ogg;*.wav;*.jpg;*.jpeg|All files|*.*",
+            Title = "选择要验证的资源",
+            Filter = "资源文件|*.png;*.bmp;*.tlg;*.psb;*.pimg;*.ogg;*.wav;*.jpg;*.jpeg|所有文件|*.*",
             CheckFileExists = true,
             Multiselect = false,
         };
@@ -37,7 +37,7 @@ public partial class MainWindow : Window
 
         selectedResourcePath = dialog.FileName;
         SelectedFileText.Text = selectedResourcePath;
-        StatusText.Text = "Validating resource…";
+        StatusText.Text = "正在验证资源…";
         ReportText.Text = string.Empty;
         PreviewImage.Source = null;
         ConvertBmpButton.IsEnabled = false;
@@ -46,7 +46,7 @@ public partial class MainWindow : Window
             var report = await VerifyResourceAsync(selectedResourcePath);
             selectedFormat = report.Format;
             ReportText.Text = report.Text;
-            StatusText.Text = $"{report.Format} — evidence stage: {report.Stage}";
+            StatusText.Text = $"{FormatName(report.Format)} — 证据等级：{EvidenceStageName(report.Stage)}";
             ConvertBmpButton.IsEnabled = report.CanConvert;
             await LoadPreviewIfSupportedAsync(selectedResourcePath, report.Format, report.Stage);
         }
@@ -54,8 +54,8 @@ public partial class MainWindow : Window
         {
             selectedResourcePath = null;
             selectedFormat = ResourceFormat.Unknown;
-            StatusText.Text = "The resource could not be read.";
-            ReportText.Text = $"Error: {exception.Message}";
+            StatusText.Text = "无法读取该资源。";
+            ReportText.Text = $"错误：{exception.Message}";
         }
     }
 
@@ -68,8 +68,8 @@ public partial class MainWindow : Window
 
         var dialog = new SaveFileDialog
         {
-            Title = "Save verified PNG conversion",
-            Filter = "PNG image|*.png",
+            Title = "保存已验证的 PNG 转换结果",
+            Filter = "PNG 图像|*.png",
             AddExtension = true,
             DefaultExt = ".png",
             OverwritePrompt = false,
@@ -80,7 +80,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        StatusText.Text = "Converting resource to PNG…";
+        StatusText.Text = "正在将资源转换为 PNG…";
         try
         {
             EvidenceStage stage;
@@ -102,14 +102,14 @@ public partial class MainWindow : Window
             }
 
             StatusText.Text = succeeded
-                ? $"PNG created and verified: {dialog.FileName}"
-                : $"Conversion stopped at evidence stage {stage}.";
+                ? $"已创建并验证 PNG：{dialog.FileName}"
+                : $"转换在证据等级“{EvidenceStageName(stage)}”处停止。";
             ReportText.Text = FormatDiagnostics(diagnostics);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            StatusText.Text = "Conversion did not create an output file.";
-            ReportText.Text = $"Error: {exception.Message}";
+            StatusText.Text = "转换未创建输出文件。";
+            ReportText.Text = $"错误：{exception.Message}";
         }
     }
 
@@ -117,22 +117,22 @@ public partial class MainWindow : Window
     {
         CaptureRuntimeButton.IsEnabled = RuntimeConsentCheck.IsChecked == true;
         RuntimeStatusText.Text = CaptureRuntimeButton.IsEnabled
-            ? "Ready to create a new archive through the architecture-matched, read-only worker."
-            : "Runtime capture is disabled until authorization is explicitly confirmed.";
+            ? "已准备好通过架构匹配的只读工作进程创建新归档。"
+            : "必须显式确认授权后才能启用运行时采集。";
     }
 
     private void InspectRuntimeTargetButton_Click(object sender, RoutedEventArgs e)
     {
         if (!int.TryParse(RuntimePidText.Text, out var processId) || processId <= 0)
         {
-            RuntimeStatusText.Text = "Enter a positive PID to inspect its architecture without starting a worker.";
+            RuntimeStatusText.Text = "请输入正整数 PID，以在不启动工作进程的情况下检查其架构。";
             return;
         }
 
         var inspection = RuntimeArchitectureInspector.Inspect(processId);
         RuntimeStatusText.Text = inspection.Architecture == KiriScope.Worker.Protocol.RuntimeTargetArchitecture.Unknown
-            ? $"PID {processId} could not be prepared for runtime observation. No worker was launched."
-            : $"PID {processId} is {inspection.Architecture}. A later capture will use a matching worker to read process and module metadata only.";
+            ? $"无法为 PID {processId} 准备运行时观察。未启动工作进程。"
+            : $"PID {processId} 的架构为 {inspection.Architecture}。后续采集将使用匹配的工作进程，只读取进程和模块元数据。";
         ReportText.Text = FormatDiagnostics(inspection.Diagnostics);
     }
 
@@ -140,14 +140,14 @@ public partial class MainWindow : Window
     {
         if (!int.TryParse(RuntimePidText.Text, out var processId) || processId <= 0 || RuntimeConsentCheck.IsChecked != true)
         {
-            RuntimeStatusText.Text = "Enter a positive PID and explicitly confirm authorization before capture.";
+            RuntimeStatusText.Text = "请输入正整数 PID，并在采集前显式确认授权。";
             return;
         }
 
         var dialog = new SaveFileDialog
         {
-            Title = "Save runtime evidence archive",
-            Filter = "JSON archive|*.json",
+            Title = "保存运行时证据归档",
+            Filter = "JSON 归档|*.json",
             AddExtension = true,
             DefaultExt = ".json",
             OverwritePrompt = false,
@@ -159,7 +159,7 @@ public partial class MainWindow : Window
         }
 
         CaptureRuntimeButton.IsEnabled = false;
-        RuntimeStatusText.Text = $"Capturing PID {processId} through an isolated worker...";
+        RuntimeStatusText.Text = $"正在通过隔离工作进程采集 PID {processId}…";
         try
         {
             var bundledWorkers = await BundledRuntimeWorkers.ExtractAsync();
@@ -177,14 +177,14 @@ public partial class MainWindow : Window
                     capture));
             var process = capture.Response?.Process;
             RuntimeStatusText.Text = capture.Succeeded
-                ? $"Captured PID {processId} ({process?.Architecture}) with {process?.Modules.Count ?? 0} module(s) to {archivePath}."
-                : $"Runtime capture stopped; the traceable archive was written to {archivePath}.";
+                ? $"已采集 PID {processId}（{process?.Architecture}），共 {process?.Modules.Count ?? 0} 个模块，归档已写入：{archivePath}。"
+                : $"运行时采集已停止；可追溯归档已写入：{archivePath}。";
             ReportText.Text = FormatDiagnostics(capture.Diagnostics);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException)
         {
-            RuntimeStatusText.Text = "Runtime capture did not overwrite an existing archive.";
-            ReportText.Text = $"Runtime error: {exception.Message}";
+            RuntimeStatusText.Text = "运行时采集未完成；不会覆盖已存在的归档。";
+            ReportText.Text = $"运行时错误：{exception.Message}";
         }
         finally
         {
@@ -208,24 +208,24 @@ public partial class MainWindow : Window
             ResourceFormat.Tlg => PresentTlg(format, await TlgMetadataReader.ReadAsync(input)),
             ResourceFormat.Psb => await PresentPsbAsync(format, input),
             _ => new ResourceVerificationPresentation(format, format == ResourceFormat.Unknown ? EvidenceStage.Unidentified : EvidenceStage.RawDataExtracted,
-                format == ResourceFormat.Unknown ? "No supported format signature was detected." : "Format signature detected; a structural validator is not available for this format yet."),
+                format == ResourceFormat.Unknown ? "未检测到受支持的格式签名。" : "已检测到格式签名；当前尚无此格式的结构验证器。"),
         };
     }
 
     private static ResourceVerificationPresentation PresentPng(ResourceFormat format, PngValidationResult result) =>
-        new(format, result.Stage, $"Width: {result.Width}\nHeight: {result.Height}\nBit depth: {result.BitDepth}\nColor type: {result.ColorType}\nIDAT: {result.IdatCompressedBytes} compressed bytes, {result.IdatDecompressedBytes} decompressed bytes\n\n{FormatDiagnostics(result.Diagnostics)}");
+        new(format, result.Stage, $"宽度：{result.Width}\n高度：{result.Height}\n位深：{result.BitDepth}\n颜色类型：{result.ColorType}\nIDAT：{result.IdatCompressedBytes} 个压缩字节，{result.IdatDecompressedBytes} 个解压字节\n\n{FormatDiagnostics(result.Diagnostics)}");
 
     private static ResourceVerificationPresentation PresentBmp(ResourceFormat format, BmpValidationResult result) =>
-        new(format, result.Stage, $"Width: {result.Width}\nHeight: {result.Height}\nBit depth: {result.BitCount}\nCompression: {result.Compression}\nPixel data: offset {result.PixelDataOffset}, length {result.PixelDataLength}\n\n{FormatDiagnostics(result.Diagnostics)}", result.IsValid);
+        new(format, result.Stage, $"宽度：{result.Width}\n高度：{result.Height}\n位深：{result.BitCount}\n压缩方式：{result.Compression}\n像素数据：偏移 {result.PixelDataOffset}，长度 {result.PixelDataLength}\n\n{FormatDiagnostics(result.Diagnostics)}", result.IsValid);
 
     private static ResourceVerificationPresentation PresentWave(ResourceFormat format, WaveValidationResult result) =>
-        new(format, result.Stage, $"Format tag: {result.FormatTag}\nChannels: {result.ChannelCount}\nSample rate: {result.SampleRate}\nBits per sample: {result.BitsPerSample}\nData bytes: {result.DataBytes}\n\n{FormatDiagnostics(result.Diagnostics)}");
+        new(format, result.Stage, $"格式标签：{result.FormatTag}\n声道数：{result.ChannelCount}\n采样率：{result.SampleRate}\n每采样位数：{result.BitsPerSample}\n数据字节数：{result.DataBytes}\n\n{FormatDiagnostics(result.Diagnostics)}");
 
     private static ResourceVerificationPresentation PresentJpeg(ResourceFormat format, JpegValidationResult result) =>
-        new(format, result.Stage, $"Width: {result.Width}\nHeight: {result.Height}\nPrecision: {result.Precision}\nComponents: {result.ComponentCount}\nScans: {result.ScanCount}\n\n{FormatDiagnostics(result.Diagnostics)}");
+        new(format, result.Stage, $"宽度：{result.Width}\n高度：{result.Height}\n精度：{result.Precision}\n分量数：{result.ComponentCount}\n扫描数：{result.ScanCount}\n\n{FormatDiagnostics(result.Diagnostics)}");
 
     private static ResourceVerificationPresentation PresentTlg(ResourceFormat format, TlgValidationResult result) =>
-        new(format, result.Stage, $"Version: {result.Version}\nWidth: {result.Width}\nHeight: {result.Height}\nColor channels: {result.ColorChannels}\nData offset: {result.DataOffset}\nSDS wrapper: {result.HasSdsWrapper}\n\n{FormatDiagnostics(result.Diagnostics)}", result.IsRecognized && result.Version == 5);
+        new(format, result.Stage, $"版本：{result.Version}\n宽度：{result.Width}\n高度：{result.Height}\n颜色通道：{result.ColorChannels}\n数据偏移：{result.DataOffset}\nSDS 包装：{result.HasSdsWrapper}\n\n{FormatDiagnostics(result.Diagnostics)}", result.IsRecognized && result.Version == 5);
 
     private static async Task<ResourceVerificationPresentation> PresentPsbAsync(ResourceFormat format, Stream input)
     {
@@ -233,17 +233,17 @@ public partial class MainWindow : Window
         input.Position = 0;
         var structure = await PsbStructureProbe.ProbeAsync(input);
         var details = new StringBuilder();
-        details.AppendLine($"Version: {header.Version}");
-        details.AppendLine($"Header may be encrypted: {header.HeaderMayBeEncrypted}");
-        details.AppendLine($"PIMG signature: {structure.IsPimgCandidate}");
-        details.AppendLine($"Root keys: {string.Join(", ", structure.RootKeys)}");
+        details.AppendLine($"版本：{header.Version}");
+        details.AppendLine($"头部可能已加密：{header.HeaderMayBeEncrypted}");
+        details.AppendLine($"PIMG 签名：{structure.IsPimgCandidate}");
+        details.AppendLine($"根键：{string.Join(", ", structure.RootKeys)}");
         foreach (var value in structure.RootUnsignedIntegers)
         {
-            details.AppendLine($"Value: {structure.RootKeys[value.RootKeyIndex]} = {value.Value}");
+            details.AppendLine($"值：{structure.RootKeys[value.RootKeyIndex]} = {value.Value}");
         }
         foreach (var resource in structure.RootResources)
         {
-            details.AppendLine($"Resource: {structure.RootKeys[resource.RootKeyIndex]} → index {resource.ResourceIndex}, offset {resource.Offset}, length {resource.Length}");
+            details.AppendLine($"资源：{structure.RootKeys[resource.RootKeyIndex]} → 索引 {resource.ResourceIndex}，偏移 {resource.Offset}，长度 {resource.Length}");
         }
 
         details.AppendLine();
@@ -275,7 +275,7 @@ public partial class MainWindow : Window
 
                 if (image is null)
                 {
-                    ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}Preview unavailable: {FormatDiagnostics(diagnostics)}";
+                    ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}无法预览：{FormatDiagnostics(diagnostics)}";
                     return;
                 }
 
@@ -286,7 +286,7 @@ public partial class MainWindow : Window
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or ArgumentException)
             {
-                ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}Preview unavailable: {exception.Message}";
+                ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}无法预览：{exception.Message}";
                 return;
             }
         }
@@ -309,12 +309,52 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is IOException or NotSupportedException or ArgumentException)
         {
-            ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}Preview unavailable: {exception.Message}";
+            ReportText.Text += $"{Environment.NewLine}{Environment.NewLine}无法预览：{exception.Message}";
         }
     }
 
-    private static string FormatDiagnostics(IEnumerable<KiriScopeDiagnostic> diagnostics) =>
-        string.Join(Environment.NewLine, diagnostics.Select(diagnostic => $"{diagnostic.Severity} [{diagnostic.Code}] {diagnostic.Message}"));
+    private static string FormatDiagnostics(IEnumerable<KiriScopeDiagnostic> diagnostics)
+    {
+        var formatted = diagnostics
+            .Select(diagnostic => $"{DiagnosticSeverityName(diagnostic.Severity)} [{diagnostic.Code}] {diagnostic.Message}")
+            .ToArray();
+        return formatted.Length == 0 ? "无诊断信息。" : string.Join(Environment.NewLine, formatted);
+    }
+
+    private static string FormatName(ResourceFormat format) => format switch
+    {
+        ResourceFormat.Unknown => "未知格式",
+        ResourceFormat.Png => "PNG",
+        ResourceFormat.Tlg => "TLG",
+        ResourceFormat.Psb => "PSB",
+        ResourceFormat.Pimg => "PIMG",
+        ResourceFormat.Ogg => "Ogg",
+        ResourceFormat.Wave => "WAVE",
+        ResourceFormat.Jpeg => "JPEG",
+        ResourceFormat.Bmp => "BMP",
+        _ => format.ToString(),
+    };
+
+    private static string EvidenceStageName(EvidenceStage stage) => stage switch
+    {
+        EvidenceStage.Unidentified => "未识别",
+        EvidenceStage.ContainerIdentified => "容器已识别",
+        EvidenceStage.IndexParsed => "索引已解析",
+        EvidenceStage.EntryLocated => "条目已定位",
+        EvidenceStage.RawDataExtracted => "原始数据已提取",
+        EvidenceStage.ContentFilterApplied => "已应用内容过滤器",
+        EvidenceStage.FormatValidated => "格式已验证",
+        EvidenceStage.ContentUsable => "内容可用",
+        _ => stage.ToString(),
+    };
+
+    private static string DiagnosticSeverityName(DiagnosticSeverity severity) => severity switch
+    {
+        DiagnosticSeverity.Info => "信息",
+        DiagnosticSeverity.Warning => "警告",
+        DiagnosticSeverity.Error => "错误",
+        _ => severity.ToString(),
+    };
 
     private static byte[] ToBgra(byte[] rgba)
     {
