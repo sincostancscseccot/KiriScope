@@ -2,13 +2,13 @@
 
 KiriScope 是面向 Windows 的 KiriKiri 引擎资源分析、提取、验证与研究工作台，提供 GUI 与 CLI。它优先处理图像等艺术资源，并将格式证据、作品方案、研究观察和可复现报告分开保存。
 
-当前发布为 `0.1.0-preview.6`：阶段 7 的安全实用功能已经实现，包括 XP3 读取/提取与标准重打包、资源验证和受控转换、可配置内容过滤、静态分析、默认关闭的运行时证据、版本化知识库，以及只读松散文件覆盖计划。
+当前发布为 `0.1.0-preview.7`：阶段 7 的安全实用功能已经实现，包括 XP3 读取/提取与标准重打包、资源验证和受控转换、可配置内容过滤、静态分析、默认关闭的运行时证据、版本化知识库，以及只读松散文件覆盖计划。
 
 ## 从这里开始
 
 - 想安装并完成第一次分析：[快速上手教程](docs/user-guide/GETTING_STARTED.md)。
 - 想确认某项功能是否已经实现及其边界：[当前可用能力](docs/user-guide/CAPABILITIES.md)。
-- 想直接下载：前往 [0.1.0-preview.6 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.6)。
+- 想直接下载：前往 [0.1.0-preview.7 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.7)。
 
 ## 当前能力，一页看懂
 

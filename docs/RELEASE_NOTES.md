@@ -1,5 +1,22 @@
 # 发布说明
 
+## 0.1.0-preview.7
+
+- 新增 Windows x64 单文件 GUI 发布：`KiriScope.Gui-0.1.0-preview.7-win-x64.exe`。它自包含 .NET 运行时，普通 GUI 资源分析不需要任何旁文件。
+- 为保持显式运行时采集功能，x86/x64 worker 已嵌入单文件 GUI。仅当用户填写 PID、勾选授权并启动采集时，才会临时展开对应 worker 并在启动前校验其 SHA-256。
+- 新增 `Build-GuiSingleFile.ps1`；完整便携版与安装版的构建流程保持不变。
+
+### 已验证
+
+- 全量 .NET 测试通过。
+- 单文件发布目录仅保留一个 GUI EXE，且可在隐藏启动烟雾测试中保持运行。
+- GUI 程序集中包含两个内嵌 worker 资源。
+
+### 已知边界
+
+- 单文件 GUI 仅支持 Windows x64，不包含 CLI，且当前未签署 Authenticode；下载后应核对发布页 SHA-256。
+- 运行时 worker 的临时展开仍严格受 GUI 的显式授权开关控制，不会在普通启动或资源检查时发生。
+
 ## 0.1.0-preview.6
 
 - 提供自包含的 Windows x64 便携版 ZIP 与当前用户范围的 Inno Setup 安装包。

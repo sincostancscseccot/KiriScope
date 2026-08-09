@@ -162,7 +162,12 @@ public partial class MainWindow : Window
         RuntimeStatusText.Text = $"Capturing PID {processId} through an isolated worker...";
         try
         {
-            var capture = await RuntimeWorkerLauncher.CaptureAsync(new RuntimeCaptureLaunchRequest(processId, ExplicitlyEnabled: true));
+            var bundledWorkers = await BundledRuntimeWorkers.ExtractAsync();
+            var capture = await RuntimeWorkerLauncher.CaptureAsync(new RuntimeCaptureLaunchRequest(
+                processId,
+                ExplicitlyEnabled: true,
+                WorkerX86Path: bundledWorkers?.X86Path,
+                WorkerX64Path: bundledWorkers?.X64Path));
             var archivePath = await RuntimeResearchArchiveWriter.WriteNewAsync(
                 dialog.FileName,
                 new RuntimeProcessResearchArchive(
@@ -176,7 +181,7 @@ public partial class MainWindow : Window
                 : $"Runtime capture stopped; the traceable archive was written to {archivePath}.";
             ReportText.Text = FormatDiagnostics(capture.Diagnostics);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException)
         {
             RuntimeStatusText.Text = "Runtime capture did not overwrite an existing archive.";
             ReportText.Text = $"Runtime error: {exception.Message}";

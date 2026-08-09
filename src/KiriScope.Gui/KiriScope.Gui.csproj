@@ -16,4 +16,11 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
 
+  <!-- Supplied only by Build-GuiSingleFile.ps1. These self-contained workers are embedded
+       in the GUI executable and are extracted only after runtime capture is explicitly enabled. -->
+  <ItemGroup Condition="'$(BundledWorkerX64Path)' != '' and '$(BundledWorkerX86Path)' != ''">
+    <EmbeddedResource Include="$(BundledWorkerX64Path)" LogicalName="KiriScope.Gui.RuntimeWorkers.X64" />
+    <EmbeddedResource Include="$(BundledWorkerX86Path)" LogicalName="KiriScope.Gui.RuntimeWorkers.X86" />
+  </ItemGroup>
+
 </Project>

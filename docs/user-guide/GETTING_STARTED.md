@@ -14,6 +14,10 @@ KiriScope 是 Windows 上的 KiriKiri 资源分析工作台。请只分析你拥
 .\KiriScope.Cli.exe version
 ```
 
+### 单文件 GUI
+
+若获得 `KiriScope.Gui-<version>-win-x64.exe`，可直接运行该文件，不需要预装 .NET。它只提供 GUI；需要 CLI 时请使用便携版或安装版。单文件版本在普通资源分析时不会写入旁文件；只有你显式授权运行时采集时，才会把内嵌 worker 临时展开到当前用户的临时目录。
+
 ### 从源码运行
 
 需要 Windows 和 .NET 10 SDK：

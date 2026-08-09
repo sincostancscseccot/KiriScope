@@ -29,6 +29,18 @@ C:\Users\<user>\AppData\Local\Programs\Inno Setup 6\ISCC.exe
 .\packaging\Build-Release.ps1 -Version 0.1.0 -InnoSetupCompilerPath C:\tools\InnoSetup\ISCC.exe
 ```
 
+## 单文件 GUI EXE
+
+若只需要桌面 GUI，可创建一个可单独复制和运行的 x64 EXE：
+
+```powershell
+.\packaging\Build-GuiSingleFile.ps1 -Version 0.1.0-preview.7
+```
+
+脚本会在全新的 `artifacts\releases\<version>\` 目录中只留下 `KiriScope.Gui-<version>-win-x64.exe`。它是自包含的，不要求目标机器预先安装 .NET，也不包含 CLI。与普通发布不同，x86/x64 运行时 worker 已作为资源嵌入 GUI；仅当用户填写 PID、勾选授权并启动运行时采集时，GUI 才会将架构匹配的 worker 解压到当前用户的临时目录，校验 SHA-256 后使用。普通资源检查、提取和转换不会产生这些临时文件。
+
+单文件 GUI 目前仅支持 `win-x64`。它会因为嵌入运行时与两个 worker 而明显大于普通 GUI 主程序；若需要 CLI、安装程序或可见的 worker 文件，应使用上面的完整便携包/安装包流程。
+
 ## 代码签名与验证
 
 发布脚本不会创建、导出或提交私钥。若当前用户证书库 `Cert:\CurrentUser\My` 中已有带私钥的代码签名证书，可显式传入其 40 位指纹：
@@ -47,5 +59,7 @@ Get-FileHash -LiteralPath .\KiriScope-Setup-<version>-win-x64.exe -Algorithm SHA
 Get-AuthenticodeSignature -FilePath .\KiriScope-Setup-<version>-win-x64.exe |
   Format-List Status, StatusMessage, SignerCertificate, TimeStamperCertificate
 ```
+
+`Build-GuiSingleFile.ps1` 也接受相同的 `-CodeSigningCertificateThumbprint` 和 `-TimestampServer` 参数；其输出只有一个 EXE，因此可直接对该文件验证签名和 SHA-256。
 
 发布前应在一台没有项目构建输出、但有 Windows x64 的机器或干净目录验证：GUI 能启动，`KiriScope.Cli.exe version` 能运行，且显式运行时采集能找到同包的架构匹配 worker。发布包不包含任何游戏、解密结果、进程转储或私有样本。
