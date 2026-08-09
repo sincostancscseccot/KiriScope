@@ -1,13 +1,19 @@
 # KiriScope
 
-KiriScope 是面向 Windows 的 KiriKiri 引擎资源分析、提取、验证与研究工作台，提供 GUI 与 CLI。它优先处理图像等艺术资源，并将格式证据、作品方案、研究观察和可复现报告分开保存。
+KiriScope 是面向 Windows 的 KiriKiri 资源解包器，提供 GUI 与 CLI。最终目标是让用户只需选择游戏目录或 XP3、导出资源类型和新的导出位置，即可完成自动发现、匹配、提取与汇总；分析、验证和方案库是支撑这一体验的内部能力。
 
-当前发布为 `0.1.0-preview.9`：阶段 7 的安全实用功能已经实现，包括 XP3 读取/提取与标准重打包、GUI 的归档发现与方案验证、资源验证和受控转换、可配置内容过滤、静态分析、默认关闭的运行时证据、版本化知识库，以及只读松散文件覆盖计划。
+当前发布为 `0.1.0-preview.9`：已具备 XP3 读取/提取、资源验证、可配置内容过滤、静态分析和知识库等基础，但尚未达到上述一键式自动解包体验。当前可用功能与限制请以能力矩阵为准。
+
+## 最终产品目标（开发中）
+
+普通模式的流程固定为“**输入游戏目录或 XP3 → 选择资源类型 → 选择新导出目录 → 开始解包**”。已知兼容配置会由程序按内容指纹自动匹配，普通用户无需手动选择方案 JSON；未知保护会被明确报告而不会伪装成解密成功。
+
+完整的用户体验、边界和可验收场景见[一键式 KiriKiri 解包器：产品契约](docs/product/ONE_CLICK_UNPACKER.md)，下一轮工作见[开工清单](docs/development/RESTART_PLAN.md)。
 
 ## 从这里开始
 
 - 想安装并完成第一次分析：[快速上手教程](docs/user-guide/GETTING_STARTED.md)。
-- 想确认某项功能是否已经实现及其边界：[当前可用能力](docs/user-guide/CAPABILITIES.md)。
+- 想确认当前版本已经实现的功能及其边界：[当前可用能力](docs/user-guide/CAPABILITIES.md)。
 - 想直接下载：前往 [0.1.0-preview.9 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.9)。
 
 ## 当前能力，一页看懂

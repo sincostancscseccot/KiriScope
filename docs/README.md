@@ -1,5 +1,11 @@
 # KiriScope 文档目录
 
+## 先读这里
+
+- **最终产品体验与验收标准**：[一键式 KiriKiri 解包器：产品契约](product/ONE_CLICK_UNPACKER.md)。它明确普通用户只需选择输入、资源类型和新导出位置；方案 JSON 仅是内部兼容数据。
+- **下一轮实际开工顺序**：[一键式解包器开工清单](development/RESTART_PLAN.md)。
+- **当前已实现能力与边界**：[用户指南：当前可用能力](user-guide/CAPABILITIES.md)。这是当前版本的事实，不应与最终产品目标混淆。
+
 阶段 6 的版本化方案知识库、兼容性矩阵、只读批量扫描和报告比较规则见 [knowledge/KNOWLEDGE_BASE.md](knowledge/KNOWLEDGE_BASE.md)。
 
 如果要判断一项功能是否已经可用、它能产生什么证据以及有哪些边界，请先阅读[用户指南：当前可用能力](user-guide/CAPABILITIES.md)。
@@ -8,7 +14,9 @@
 
 ## 当前文档
 
-- `PROJECT_PLAN.md`：产品范围、目标架构、阶段路线图、验收门槛和风险。
+- `product/`：面向最终用户的产品契约、主流程与验收场景。
+- `PROJECT_PLAN.md`：早期架构、阶段路线图和已完成实施记录；当前产品方向以 `product/` 为准。
+- `development/RESTART_PLAN.md`：重新对齐后的一键式解包器开工清单。
 - `architecture/`：组件边界、数据流、插件协议、运行时辅助进程设计。
 - `research/`：XP3、KiriKiri、内容过滤器和作品方案的证据化研究记录。
 - `filters/`：可配置内容过滤器、方案文件格式和候选验证约束；当前 CxEncryption 说明见 `filters/CX_ENCRYPTION.md`。
@@ -27,6 +35,7 @@
 ```text
 docs/
 ├─ decisions/       # ADR：重要技术决策及其理由
+├─ product/         # 最终用户体验与验收标准
 ├─ formats/         # XP3、TLG、PSB、PIMG 等格式说明
 ├─ filters/         # 内容过滤器与参数推导说明
 ├─ integrations/    # Ghidra、DIE、FreeMote 等适配规范
