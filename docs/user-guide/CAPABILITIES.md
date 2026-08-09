@@ -19,11 +19,11 @@ GUI 可通过 `Build-GuiSingleFile.ps1` 打包为一个自包含 EXE。它不包
 
 | 目标 | 可用命令/入口 | 当前能够完成 | 重要边界 |
 |---|---|---|---|
-| 先检查文件 | `probe`、`verify`、`xp3 list`、`xp3 profile`、`psb profile` | 计算 SHA-256，读取 XP3 索引或 PSB/PIMG 的直接根资源，并报告格式证据。 | 全程只读；识别格式不等于解码。 |
-| 导出已验证资源 | `xp3 extract`、`psb extract`、`psb extract-all` | 提取未标记加密的 XP3 条目，或导出 PSB/PIMG 的可验证直接根资源。 | 拒绝覆盖和输入目录内输出；导出原始资源不代表图层已合成。 |
+| 先检查文件 | GUI 的“XP3 归档与方案”标签，或 `probe`、`verify`、`xp3 list`、`xp3 profile`、`psb profile` | GUI 可只读发现 `.xp3`、读取索引、显示条目状态；CLI 可计算 SHA-256，并读取 XP3 索引或 PSB/PIMG 的直接根资源。 | 全程只读；识别格式不等于解码。 |
+| 导出已验证资源 | GUI 的 XP3 导出，或 `xp3 extract`、`psb extract`、`psb extract-all` | 提取未标记加密的 XP3 条目，或导出 PSB/PIMG 的可验证直接根资源。GUI 只接受全新且位于归档目录外的输出目录。 | 拒绝覆盖和输入目录内输出；导出原始资源不代表图层已合成。 |
 | 转换图像 | `convert bmp-to-png`、`convert tlg5-to-png`、`convert batch-to-png` | 解码并重新验证普通 24/32 位未压缩 BMP 与标准未加密 TLG5；批量转换保留相对路径。 | BMP 的 RLE、嵌入 JPEG/PNG 和旧式 DIB 变体不会被强行转换。 |
 | 兼容性后备转换 | `convert tlg-to-png --freemote <EmtConvert.exe>` | 显式调用用户提供的 FreeMote 工具，将临时副本转换为 PNG 后再验证。 | 不捆绑、不自动查找外部工具；成功只证明导出的 PNG 有效。 |
-| 已知方案过滤 | `xp3 extract --scheme`、`--xor-hex`、`filter score` | 对已明确指定的方案应用内容过滤器，并以格式验证给候选评分。 | 不按文件名自动猜测方案；具体游戏支持必须另有样本、哈希和证据。 |
+| 已知方案过滤 | GUI 的“验证所选方案”，或 `xp3 extract --scheme`、`--xor-hex`、`filter score` | 对已明确指定的方案应用内容过滤器，并以格式验证给候选评分。GUI 必须在一个已标记加密条目上达到 `FormatValidated`，才允许该方案全量导出。 | 不按文件名自动猜测方案；具体游戏支持必须另有样本、哈希和证据。 |
 | 新建研究归档 | `xp3 pack` | 从暂存目录生成全新的标准、未加密、未压缩 XP3。 | 不原位编辑已有归档；不保证目标游戏接受生成的归档。 |
 | 比较松散文件 | `overlay plan` | 只读比较参考目录和覆盖目录，生成哈希化的覆盖计划。 | 不复制、部署或删除游戏文件；加载优先级仍须人工验证。 |
 | 静态研究 | `analyze pe`、`analyze directory`、`analyze archive`、`report compare static` | 读取 PE、导入、字符串和插件目录，生成可复现归档与差异报告。 | 不加载或执行输入；启发式观察不会升格为兼容性事实。 |

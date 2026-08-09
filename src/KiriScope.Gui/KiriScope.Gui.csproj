@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
+    <ProjectReference Include="..\KiriScope.Filters.BuiltIn\KiriScope.Filters.BuiltIn.csproj" />
     <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
     <ProjectReference Include="..\KiriScope.Resources\KiriScope.Resources.csproj" />
     <ProjectReference Include="..\KiriScope.Runtime\KiriScope.Runtime.csproj" />

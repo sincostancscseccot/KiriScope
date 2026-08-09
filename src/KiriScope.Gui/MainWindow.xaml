@@ -4,11 +4,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="KiriScope 资源分析工作台" Height="620" Width="980" MinHeight="480" MinWidth="760">
+        Title="KiriScope 资源分析工作台" Height="760" Width="1080" MinHeight="560" MinWidth="820">
     <Grid Margin="28">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -22,44 +20,127 @@
         </DockPanel>
         <TextBlock Grid.Row="1" Margin="0,6,0,18" Foreground="Gray"
                    Text="KiriKiri 资源分析、验证与可复现研究工作台" />
-        <Expander Grid.Row="2" Margin="0,0,0,16" Padding="12" Header="运行时证据（显式授权、只读、隔离工作进程）">
-            <StackPanel>
-                <TextBlock Foreground="#FF555555" Text="请选择你拥有或已获授权分析的 PID。工作进程只读取进程和模块元数据；不会注入、读取内存、启动、暂停或结束目标。" TextWrapping="Wrap" />
-                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                    <TextBlock VerticalAlignment="Center" Text="PID:" />
-                    <TextBox x:Name="RuntimePidText" Width="130" Margin="8,0,12,0" />
-                    <Button Margin="0,0,12,0" Padding="14,6" Content="检查目标" Click="InspectRuntimeTargetButton_Click" />
-                    <CheckBox x:Name="RuntimeConsentCheck" VerticalAlignment="Center" Content="我拥有或已获授权分析此进程" Checked="RuntimeConsentCheck_Changed" Unchecked="RuntimeConsentCheck_Changed" />
-                    <Button x:Name="CaptureRuntimeButton" Margin="12,0,0,0" Padding="14,6" Content="采集到新建归档…" Click="CaptureRuntimeButton_Click" IsEnabled="False" />
-                </StackPanel>
-                <TextBlock x:Name="RuntimeStatusText" Margin="0,8,0,0" Foreground="#FF555555" Text="运行时采集默认关闭。" TextWrapping="Wrap" />
-            </StackPanel>
-        </Expander>
-        <Border Grid.Row="3" Padding="12" Margin="0,0,0,16" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
-            <StackPanel>
-                <TextBlock x:Name="SelectedFileText" FontWeight="SemiBold" Text="尚未选择资源" TextTrimming="CharacterEllipsis" />
-                <TextBlock x:Name="StatusText" Margin="0,5,0,0" Foreground="#FF555555" Text="打开 PNG、BMP、TLG、PSB 或其他资源以检查其证据状态。" TextWrapping="Wrap" />
-            </StackPanel>
-        </Border>
-        <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Border Padding="16" Margin="0,0,8,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="验证报告" />
-                    <TextBox x:Name="ReportText" Margin="0,12,0,0" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
-                </DockPanel>
-            </Border>
-            <Border Grid.Column="1" Padding="16" Margin="8,0,0,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="预览" />
-                    <ScrollViewer Margin="0,12,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                        <Image x:Name="PreviewImage" Stretch="None" />
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
-        </Grid>
+        <TabControl Grid.Row="2">
+            <TabItem Header="资源验证">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Expander Grid.Row="0" Margin="0,0,0,16" Padding="12" Header="运行时证据（显式授权、只读、隔离工作进程）">
+                        <StackPanel>
+                            <TextBlock Foreground="#FF555555" Text="请选择你拥有或已获授权分析的 PID。工作进程只读取进程和模块元数据；不会注入、读取内存、启动、暂停或结束目标。" TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock VerticalAlignment="Center" Text="PID:" />
+                                <TextBox x:Name="RuntimePidText" Width="130" Margin="8,0,12,0" />
+                                <Button Margin="0,0,12,0" Padding="14,6" Content="检查目标" Click="InspectRuntimeTargetButton_Click" />
+                                <CheckBox x:Name="RuntimeConsentCheck" VerticalAlignment="Center" Content="我拥有或已获授权分析此进程" Checked="RuntimeConsentCheck_Changed" Unchecked="RuntimeConsentCheck_Changed" />
+                                <Button x:Name="CaptureRuntimeButton" Margin="12,0,0,0" Padding="14,6" Content="采集到新建归档…" Click="CaptureRuntimeButton_Click" IsEnabled="False" />
+                            </StackPanel>
+                            <TextBlock x:Name="RuntimeStatusText" Margin="0,8,0,0" Foreground="#FF555555" Text="运行时采集默认关闭。" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Expander>
+                    <Border Grid.Row="1" Padding="12" Margin="0,0,0,16" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
+                        <StackPanel>
+                            <TextBlock x:Name="SelectedFileText" FontWeight="SemiBold" Text="尚未选择资源" TextTrimming="CharacterEllipsis" />
+                            <TextBlock x:Name="StatusText" Margin="0,5,0,0" Foreground="#FF555555" Text="打开 PNG、BMP、TLG、PSB 或其他资源以检查其证据状态。" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Padding="16" Margin="0,0,8,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="验证报告" />
+                                <TextBox x:Name="ReportText" Margin="0,12,0,0" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
+                            </DockPanel>
+                        </Border>
+                        <Border Grid.Column="1" Padding="16" Margin="8,0,0,0" BorderBrush="#FFD0D0D0" BorderThickness="1" CornerRadius="6">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top" FontSize="18" FontWeight="SemiBold" Text="预览" />
+                                <ScrollViewer Margin="0,12,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                    <Image x:Name="PreviewImage" Stretch="None" />
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+            <TabItem Header="XP3 归档与方案">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="210" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock TextWrapping="Wrap" Foreground="#FF555555"
+                               Text="先选择游戏目录或单个 XP3，读取索引后选择加密条目和方案 JSON。方案必须在所选条目上达到完整格式验证，才可用于全量导出；所有输出目录必须是新的，且位于归档目录之外。" />
+                    <WrapPanel Grid.Row="1" Margin="0,10,0,10">
+                        <Button Padding="14,6" Content="选择游戏目录…" Click="SelectGameDirectoryButton_Click" />
+                        <Button Margin="8,0,0,0" Padding="14,6" Content="选择 XP3 文件…" Click="SelectXp3ArchiveButton_Click" />
+                        <Button x:Name="ReadXp3IndexButton" Margin="8,0,0,0" Padding="14,6" Content="读取所选归档索引" Click="ReadXp3IndexButton_Click" IsEnabled="False" />
+                    </WrapPanel>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="300" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <DockPanel Margin="0,0,8,0">
+                            <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="发现的 XP3 归档" />
+                            <ListBox x:Name="Xp3ArchiveList" Margin="0,8,0,0" SelectionChanged="Xp3ArchiveList_SelectionChanged" />
+                        </DockPanel>
+                        <DockPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="已解析条目（选择一个已标记加密的条目以验证方案）" />
+                            <ListView x:Name="Xp3EntryList" Margin="0,8,0,0" SelectionChanged="Xp3EntryList_SelectionChanged">
+                                <ListView.View>
+                                    <GridView>
+                                        <GridViewColumn Header="条目" Width="300" DisplayMemberBinding="{Binding Name}" />
+                                        <GridViewColumn Header="状态" Width="100" DisplayMemberBinding="{Binding Encryption}" />
+                                        <GridViewColumn Header="解压大小" Width="110" DisplayMemberBinding="{Binding UnpackedSize}" />
+                                        <GridViewColumn Header="Adler-32" Width="100" DisplayMemberBinding="{Binding Adler32}" />
+                                    </GridView>
+                                </ListView.View>
+                            </ListView>
+                        </DockPanel>
+                    </Grid>
+                    <TextBlock x:Name="Xp3IndexSummaryText" Grid.Row="3" Margin="0,8,0,8" Foreground="#FF555555" Text="尚未读取 XP3 索引。" TextWrapping="Wrap" />
+                    <Grid Grid.Row="4" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="方案 JSON：" />
+                        <TextBox x:Name="Xp3SchemePathText" Grid.Column="1" Margin="8,0" TextChanged="Xp3SchemePathText_Changed" />
+                        <Button Grid.Column="2" Padding="14,6" Content="选择方案…" Click="SelectXp3SchemeButton_Click" />
+                        <Button x:Name="ValidateXp3SchemeButton" Grid.Column="3" Margin="8,0,0,0" Padding="14,6" Content="验证所选方案" Click="ValidateXp3SchemeButton_Click" IsEnabled="False" />
+                    </Grid>
+                    <Grid Grid.Row="5" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="新导出目录：" />
+                        <TextBox x:Name="Xp3OutputDirectoryText" Grid.Column="1" Margin="8,0" />
+                        <Button Grid.Column="2" Padding="14,6" Content="选择位置…" Click="SelectXp3OutputDirectoryButton_Click" />
+                        <Button x:Name="ExtractXp3Button" Grid.Column="3" Margin="8,0,0,0" Padding="14,6" Content="导出全部条目" Click="ExtractXp3Button_Click" IsEnabled="False" />
+                    </Grid>
+                    <DockPanel Grid.Row="6">
+                        <TextBlock x:Name="Xp3StatusText" DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="#FF555555" Text="请选择游戏目录或 XP3 归档。" TextWrapping="Wrap" />
+                        <TextBox x:Name="Xp3ReportText" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

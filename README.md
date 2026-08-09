@@ -2,21 +2,21 @@
 
 KiriScope 是面向 Windows 的 KiriKiri 引擎资源分析、提取、验证与研究工作台，提供 GUI 与 CLI。它优先处理图像等艺术资源，并将格式证据、作品方案、研究观察和可复现报告分开保存。
 
-当前发布为 `0.1.0-preview.8`：阶段 7 的安全实用功能已经实现，包括 XP3 读取/提取与标准重打包、资源验证和受控转换、可配置内容过滤、静态分析、默认关闭的运行时证据、版本化知识库，以及只读松散文件覆盖计划。
+当前发布为 `0.1.0-preview.9`：阶段 7 的安全实用功能已经实现，包括 XP3 读取/提取与标准重打包、GUI 的归档发现与方案验证、资源验证和受控转换、可配置内容过滤、静态分析、默认关闭的运行时证据、版本化知识库，以及只读松散文件覆盖计划。
 
 ## 从这里开始
 
 - 想安装并完成第一次分析：[快速上手教程](docs/user-guide/GETTING_STARTED.md)。
 - 想确认某项功能是否已经实现及其边界：[当前可用能力](docs/user-guide/CAPABILITIES.md)。
-- 想直接下载：前往 [0.1.0-preview.8 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.8)。
+- 想直接下载：前往 [0.1.0-preview.9 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.9)。
 
 ## 当前能力，一页看懂
 
 | 你想做什么 | 当前入口 | 结果边界 |
 |---|---|---|
-| 识别 XP3、资源或二进制 | GUI 的资源检查，或 `probe`、`verify`、`xp3 list`、`analyze pe` | 只读；容器识别不等于已解码或已解密。 |
-| 提取、转换或打包 | `xp3 extract`、`psb extract-all`、`convert`、`xp3 pack` | 只写入全新输出；不修改游戏目录，也不保证游戏加载结果。 |
-| 使用已有过滤方案 | `xp3 extract --scheme`、`filter score` | 必须显式指定方案；候选要经过完整格式验证。 |
+| 识别 XP3、资源或二进制 | GUI 的“资源验证”与“XP3 归档与方案”标签，或 `probe`、`verify`、`xp3 list`、`analyze pe` | 只读；容器识别不等于已解码或已解密。 |
+| 提取、转换或打包 | GUI 的 XP3 导出，或 `xp3 extract`、`psb extract-all`、`convert`、`xp3 pack` | 只写入全新输出；不修改游戏目录，也不保证游戏加载结果。 |
+| 使用已有过滤方案 | GUI 的单条格式验证，或 `xp3 extract --scheme`、`filter score` | 必须显式指定方案；候选要经过完整格式验证。 |
 | 研究未知样本 | `analyze`、`knowledge`、显式启用的 `analyze runtime` | 观察与启发式候选不会自动成为算法、密钥或兼容性结论。 |
 
 完整矩阵包含格式支持状态、所有命令分组、外部工具边界和未支持事项，见[当前可用能力](docs/user-guide/CAPABILITIES.md)。
