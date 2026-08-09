@@ -2,6 +2,8 @@
 
 阶段 6 的版本化方案知识库、兼容性矩阵、只读批量扫描和报告比较规则见 [knowledge/KNOWLEDGE_BASE.md](knowledge/KNOWLEDGE_BASE.md)。
 
+如果要判断一项功能是否已经可用、它能产生什么证据以及有哪些边界，请先阅读[用户指南：当前可用能力](user-guide/CAPABILITIES.md)。
+
 本目录保存项目的正式设计依据。实现行为与文档冲突时，应先确认并记录决策，再更新实现。
 
 ## 当前文档
@@ -14,6 +16,7 @@
 - `integrations/`：可选外部工具适配规范；当前包含 Ghidra headless 的隔离项目与归档规则。
 - `runtime/`：默认关闭的运行时 worker、离线 ProcMon 证据导入、归档与回归规则。
 - `formats/XP3_PACKING.md`：阶段 7 的标准、无覆盖 XP3 重打包范围与限制。
+- `user-guide/CAPABILITIES.md`：当前已实现功能、格式支持状态、命令分组与明确的未支持事项。
 - `user-guide/LOOSE_FILE_OVERLAY.md`：阶段 7 的只读松散文件覆盖计划与限制。
 - `user-guide/GETTING_STARTED.md`：安装、首次只读分析、受控导出、静态分析与运行时证据采集的快速教程。
 
