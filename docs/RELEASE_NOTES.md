@@ -1,6 +1,6 @@
 # 发布说明
 
-## 0.1.0-preview.4
+## 0.1.0-preview.6
 
 - 提供自包含的 Windows x64 便携版 ZIP 与当前用户范围的 Inno Setup 安装包。
 - 包含 GUI、CLI、x64 worker 与 x86 worker；运行时证据采集仍必须显式启用，且只读进程/模块元数据。
