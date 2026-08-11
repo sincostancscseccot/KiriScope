@@ -73,6 +73,53 @@ public sealed class Xp3EntryExtractorTests
     }
 
     [Fact]
+    public async Task ExtractAsync_AllowsMarkedEntryWithoutFilterOnlyWhenExplicitlyEnabled()
+    {
+        await using var archive = new MemoryStream("abc"u8.ToArray());
+        await using var output = new MemoryStream();
+        var entry = new Xp3Entry(
+            "image/title.png",
+            true,
+            3,
+            3,
+            0x024D0127U,
+            [new Xp3Segment(false, 0, 3, 3)]);
+
+        var result = await Xp3EntryExtractor.ExtractAsync(
+            archive,
+            entry,
+            output,
+            new Xp3EntryExtractionOptions { AllowUnfilteredMarkedEntries = true });
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("abc", Encoding.ASCII.GetString(output.ToArray()));
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Message.Contains("Adler-32", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExtractAsync_RejectsUnfilteredMarkedEntryWhenAdler32DoesNotMatch()
+    {
+        await using var archive = new MemoryStream("abc"u8.ToArray());
+        await using var output = new MemoryStream();
+        var entry = new Xp3Entry(
+            "image/title.png",
+            true,
+            3,
+            3,
+            0U,
+            [new Xp3Segment(false, 0, 3, 3)]);
+
+        var result = await Xp3EntryExtractor.ExtractAsync(
+            archive,
+            entry,
+            output,
+            new Xp3EntryExtractionOptions { AllowUnfilteredMarkedEntries = true });
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("XP3_ADLER32_MISMATCH", Assert.Single(result.Diagnostics).Code);
+    }
+
+    [Fact]
     public async Task ExtractAsync_RejectsMismatchedInfoAndSegmentSizes()
     {
         await using var archive = new MemoryStream(Encoding.ASCII.GetBytes("abc"));

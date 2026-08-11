@@ -37,7 +37,7 @@ public static class Xp3EntryExtractor
         options ??= new Xp3EntryExtractionOptions();
         var shouldApplyFilter = options.ContentFilter is not null &&
             (entry.IsMarkedEncrypted || options.ApplyFilterToUnmarkedEntries);
-        if (entry.IsMarkedEncrypted && !shouldApplyFilter)
+        if (entry.IsMarkedEncrypted && !shouldApplyFilter && !options.AllowUnfilteredMarkedEntries)
         {
             return Failed(
                 entry,
@@ -122,7 +122,9 @@ public static class Xp3EntryExtractor
             var successCode = shouldApplyFilter ? "XP3_CONTENT_FILTER_APPLIED" : "XP3_ENTRY_EXTRACTED";
             var successMessage = shouldApplyFilter
                 ? "The content filter was applied and output size was validated."
-                : "The unencrypted XP3 entry was extracted and size-validated.";
+                : entry.IsMarkedEncrypted
+                    ? "The marked entry was accepted without a content filter after its plain-content Adler-32 was validated."
+                    : "The unencrypted XP3 entry was extracted and size-validated.";
             return new Xp3EntryExtractionResult(
                 entry.Name,
                 stage,
@@ -179,8 +181,7 @@ public static class Xp3EntryExtractor
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                var destinationPath = SafeOutputPath.Resolve(outputRoot, entry.Name);
-                results.Add(await ExtractToFileAsync(archive, entry, destinationPath, options, cancellationToken).ConfigureAwait(false));
+                results.Add(await ExtractToFileAsync(archive, entry, outputRoot, entry.Name, options, cancellationToken).ConfigureAwait(false));
             }
             catch (ArgumentException exception)
             {
@@ -196,14 +197,27 @@ public static class Xp3EntryExtractor
             index.Diagnostics);
     }
 
-    private static async Task<Xp3EntryExtractionResult> ExtractToFileAsync(
+    /// <summary>Extracts one entry to a safe, non-overwriting path below an output root.</summary>
+    public static Task<Xp3EntryExtractionResult> ExtractToFileAsync(
+        Stream archive,
+        Xp3Entry entry,
+        string outputRoot,
+        string outputRelativePath,
+        Xp3EntryExtractionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var destinationPath = SafeOutputPath.Resolve(outputRoot, outputRelativePath);
+        return ExtractToFileCoreAsync(archive, entry, destinationPath, options, cancellationToken);
+    }
+
+    private static async Task<Xp3EntryExtractionResult> ExtractToFileCoreAsync(
         Stream archive,
         Xp3Entry entry,
         string destinationPath,
         Xp3EntryExtractionOptions? options,
         CancellationToken cancellationToken)
     {
-        if (entry.IsMarkedEncrypted && options?.ContentFilter is null)
+        if (entry.IsMarkedEncrypted && options?.ContentFilter is null && options?.AllowUnfilteredMarkedEntries != true)
         {
             return Failed(
                 entry,

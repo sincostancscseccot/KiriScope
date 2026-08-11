@@ -51,6 +51,7 @@ function Publish-SingleFile {
         '--output', $OutputDirectory,
         '-p:PublishSingleFile=true',
         '-p:IncludeNativeLibrariesForSelfExtract=true',
+        '-p:IncludeAllContentForSelfExtract=true',
         '-p:PublishTrimmed=false',
         '-p:DebugType=None',
         "-p:Version=$Version"

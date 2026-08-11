@@ -19,6 +19,7 @@ public static class Xp3ArchiveReader
     private const uint InfoChunk = 0x6F666E69; // info
     private const uint SegmentChunk = 0x6D676573; // segm
     private const uint AdlerChunk = 0x726C6461; // adlr
+    private const int NameListReferenceLength = sizeof(long) + sizeof(uint) + sizeof(uint);
     private const int SegmentRecordLength = 28;
 
     public static async Task<Xp3ArchiveIndex> ReadIndexAsync(
@@ -122,11 +123,172 @@ public static class Xp3ArchiveReader
             return new Xp3ArchiveIndex(EvidenceStage.ContainerIdentified, indexOffset, true, Array.Empty<Xp3Entry>(), diagnostics);
         }
 
-        var entries = ParseEntries(indexData, input.Length, options, diagnostics);
+        var nameMappings = await ReadNameMappingsAsync(indexData, input, options, diagnostics, cancellationToken).ConfigureAwait(false);
+        var entries = ApplyNameMappings(ParseEntries(indexData, input.Length, options, diagnostics), nameMappings);
         var stage = diagnostics.Any(static item => item.Severity == DiagnosticSeverity.Error)
             ? EvidenceStage.ContainerIdentified
             : EvidenceStage.IndexParsed;
-        return new Xp3ArchiveIndex(stage, indexOffset, indexKind == 1, entries, diagnostics);
+        return new Xp3ArchiveIndex(stage, indexOffset, indexKind == 1, entries, diagnostics)
+        {
+            NameMappings = nameMappings,
+        };
+    }
+
+    private static async Task<IReadOnlyDictionary<uint, string>> ReadNameMappingsAsync(
+        byte[] indexData,
+        Stream input,
+        Xp3ReadOptions options,
+        List<KiriScopeDiagnostic> diagnostics,
+        CancellationToken cancellationToken)
+    {
+        var mappings = new Dictionary<uint, string>();
+        var references = FindNameListReferences(indexData, options, diagnostics);
+        foreach (var reference in references)
+        {
+            if (!RangeFits(reference.Offset, reference.PackedSize, input.Length))
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_REFERENCE_INVALID", "A protected XP3 filename-list reference is outside the archive bounds.", reference.Offset));
+                continue;
+            }
+
+            try
+            {
+                var packedNames = await ReadBytesAtAsync(input, reference.Offset, checked((int)reference.PackedSize), cancellationToken).ConfigureAwait(false);
+                var names = await DecompressNameListAsync(packedNames, checked((int)reference.UnpackedSize), cancellationToken).ConfigureAwait(false);
+                ParseNameListRecords(names, mappings, options.MaximumEntryCount, diagnostics, reference.Offset);
+            }
+            catch (InvalidDataException exception)
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_DECOMPRESSION_FAILED", exception.Message, reference.Offset));
+            }
+        }
+
+        return mappings;
+    }
+
+    private static List<NameListReference> FindNameListReferences(
+        ReadOnlySpan<byte> indexData,
+        Xp3ReadOptions options,
+        List<KiriScopeDiagnostic> diagnostics)
+    {
+        var references = new List<NameListReference>();
+        var offset = 0;
+        while (offset < indexData.Length)
+        {
+            if (!TryReadChunkHeader(indexData, ref offset, out var chunkTag, out var chunkLength, out var chunkDataOffset, diagnostics))
+            {
+                break;
+            }
+
+            // YuzuSoft-family protected archives store a reference to a separately compressed
+            // filename list in a four-character section ending in ':', for example "cbg:".
+            if ((chunkTag >> 24) == (byte)':' && chunkLength >= NameListReferenceLength)
+            {
+                var reference = indexData.Slice(chunkDataOffset, NameListReferenceLength);
+                var nameListOffset = BinaryPrimitives.ReadInt64LittleEndian(reference);
+                var unpackedSize = BinaryPrimitives.ReadUInt32LittleEndian(reference.Slice(sizeof(long), sizeof(uint)));
+                var packedSize = BinaryPrimitives.ReadUInt32LittleEndian(reference.Slice(sizeof(long) + sizeof(uint), sizeof(uint)));
+                if (unpackedSize > options.MaximumIndexSize || packedSize > options.MaximumIndexSize)
+                {
+                    diagnostics.Add(Warning("XP3_NAME_LIST_REFERENCE_INVALID", "A protected XP3 filename-list reference declares an excessive size.", chunkDataOffset));
+                }
+                else
+                {
+                    references.Add(new NameListReference(nameListOffset, unpackedSize, packedSize));
+                }
+            }
+
+            offset = checked(chunkDataOffset + chunkLength);
+        }
+
+        return references;
+    }
+
+    private static async Task<byte[]> DecompressNameListAsync(byte[] packedNames, int unpackedSize, CancellationToken cancellationToken)
+    {
+        await using var packed = new MemoryStream(packedNames, writable: false);
+        await using var zlib = new ZLibStream(packed, CompressionMode.Decompress, leaveOpen: false);
+        var names = await ReadExactlyAsync(zlib, unpackedSize, cancellationToken).ConfigureAwait(false);
+        if (await zlib.ReadAsync(new byte[1], cancellationToken).ConfigureAwait(false) != 0)
+        {
+            throw new InvalidDataException("Decompressed XP3 filename list exceeds its declared size.");
+        }
+
+        return names;
+    }
+
+    private static void ParseNameListRecords(
+        ReadOnlySpan<byte> data,
+        IDictionary<uint, string> destination,
+        int maximumEntryCount,
+        List<KiriScopeDiagnostic> diagnostics,
+        long nameListOffset)
+    {
+        var offset = 0;
+        var recordCount = 0;
+        while (offset < data.Length)
+        {
+            const int fixedRecordLength = sizeof(uint) + sizeof(long) + sizeof(uint) + sizeof(short);
+            if (data.Length - offset < fixedRecordLength)
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_RECORD_TRUNCATED", "A protected XP3 filename-list record is truncated.", nameListOffset + offset));
+                return;
+            }
+
+            if (recordCount >= maximumEntryCount)
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_ENTRY_LIMIT_EXCEEDED", "The configured protected XP3 filename-list limit was reached.", nameListOffset + offset));
+                return;
+            }
+
+            var recordSize = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(offset + sizeof(uint), sizeof(long)));
+            if (recordSize < sizeof(uint) + sizeof(short) || recordSize > data.Length - offset - (sizeof(uint) + sizeof(long)))
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_RECORD_INVALID", "A protected XP3 filename-list record has an invalid length.", nameListOffset + offset));
+                return;
+            }
+
+            var hashOffset = offset + sizeof(uint) + sizeof(long);
+            var hash = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(hashOffset, sizeof(uint)));
+            var characterCount = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(hashOffset + sizeof(uint), sizeof(short)));
+            var nameByteLength = checked(characterCount * sizeof(char));
+            var availableNameBytes = recordSize - (sizeof(uint) + sizeof(short));
+            if (characterCount < 0 || nameByteLength > availableNameBytes)
+            {
+                diagnostics.Add(Warning("XP3_NAME_LIST_NAME_INVALID", "A protected XP3 filename-list record has an invalid UTF-16 name length.", nameListOffset + offset));
+                return;
+            }
+
+            var name = Encoding.Unicode.GetString(data.Slice(hashOffset + sizeof(uint) + sizeof(short), nameByteLength));
+            if (!string.IsNullOrWhiteSpace(name) && name.IndexOf('\0') < 0)
+            {
+                destination.TryAdd(hash, name);
+            }
+
+            offset = checked(offset + sizeof(uint) + sizeof(long) + (int)recordSize);
+            recordCount++;
+        }
+    }
+
+    private static List<Xp3Entry> ApplyNameMappings(
+        List<Xp3Entry> entries,
+        IReadOnlyDictionary<uint, string> nameMappings)
+    {
+        if (nameMappings.Count == 0)
+        {
+            return entries;
+        }
+
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entry = entries[index];
+            if (entry.Adler32 is { } hash && nameMappings.TryGetValue(hash, out var mappedName))
+            {
+                entries[index] = entry with { Name = mappedName };
+            }
+        }
+
+        return entries;
     }
 
     private static List<Xp3Entry> ParseEntries(
@@ -402,6 +564,11 @@ public static class Xp3ArchiveReader
 
     private static KiriScopeDiagnostic Error(string code, string message, long? offset = null) =>
         new(code, DiagnosticSeverity.Error, message, offset);
+
+    private static KiriScopeDiagnostic Warning(string code, string message, long? offset = null) =>
+        new(code, DiagnosticSeverity.Warning, message, offset);
+
+    private sealed record NameListReference(long Offset, uint UnpackedSize, uint PackedSize);
 
     private sealed class LimitedReadStream(Stream inner, long remaining, bool leaveOpen) : Stream
     {
