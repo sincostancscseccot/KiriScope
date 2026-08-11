@@ -4,6 +4,7 @@
     <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
     <ProjectReference Include="..\KiriScope.Filters.BuiltIn\KiriScope.Filters.BuiltIn.csproj" />
     <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
+    <ProjectReference Include="..\KiriScope.Knowledge\KiriScope.Knowledge.csproj" />
     <ProjectReference Include="..\KiriScope.Resources\KiriScope.Resources.csproj" />
     <ProjectReference Include="..\KiriScope.Runtime\KiriScope.Runtime.csproj" />
     <ProjectReference Include="..\KiriScope.Xp3\KiriScope.Xp3.csproj" />
@@ -22,6 +23,17 @@
   <ItemGroup Condition="'$(BundledWorkerX64Path)' != '' and '$(BundledWorkerX86Path)' != ''">
     <EmbeddedResource Include="$(BundledWorkerX64Path)" LogicalName="KiriScope.Gui.RuntimeWorkers.X64" />
     <EmbeddedResource Include="$(BundledWorkerX86Path)" LogicalName="KiriScope.Gui.RuntimeWorkers.X86" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\KiriScope.RuntimeCapture.X86.dll" LogicalName="KiriScope.Gui.RuntimeCapture.X86" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\plugins\**\*"
+          Exclude="..\..\plugins\templates\**\bin\**\*;..\..\plugins\templates\**\obj\**\*"
+          Link="plugins\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

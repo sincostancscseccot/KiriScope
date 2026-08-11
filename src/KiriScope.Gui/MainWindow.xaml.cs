@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using System.Windows.Media;
@@ -6,6 +7,7 @@ using System.Windows.Media.Imaging;
 using KiriScope.Core.Diagnostics;
 using KiriScope.Core.Evidence;
 using KiriScope.Filters.BuiltIn;
+using KiriScope.Knowledge;
 using KiriScope.Plugins.Abstractions.Filters;
 using KiriScope.Resources;
 using KiriScope.Runtime;
@@ -23,10 +25,464 @@ public partial class MainWindow : Window
     private string? selectedXp3ArchivePath;
     private Xp3ArchiveIndex? selectedXp3Index;
     private ValidatedXp3Scheme? validatedXp3Scheme;
+    private GameInput? quickGameInput;
+    private CancellationTokenSource? quickExtractionCancellation;
+    private bool quickInputIsReady;
+    private string? researchGameDirectory;
+    private readonly List<string> researchRuntimeEvidencePaths = [];
+    private CancellationTokenSource? researchPackageCancellation;
 
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    private async void SelectQuickGameDirectoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "选择游戏目录" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await SetQuickGameInputAsync(dialog.FolderName);
+        }
+    }
+
+    private async void SelectQuickGameFileButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择 XP3 归档或完整游戏 ZIP",
+            Filter = "KiriKiri 输入|*.xp3;*.zip|XP3 归档|*.xp3|完整游戏 ZIP|*.zip",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await SetQuickGameInputAsync(dialog.FileName);
+        }
+    }
+
+    private async Task SetQuickGameInputAsync(string inputPath)
+    {
+        try
+        {
+            var input = GameInput.FromPath(inputPath);
+            QuickGameInputText.Text = input.InputPath;
+            QuickExtractionStatusText.Text = "正在只读检查游戏输入…";
+            QuickExtractionReportText.Text = string.Empty;
+            var discovery = await GameExtractionService.DiscoverAsync(input);
+            quickGameInput = input;
+            quickInputIsReady = !discovery.HasErrors && discovery.Archives.Count > 0;
+            QuickExtractionReportText.Text = FormatQuickDiscovery(discovery);
+            QuickExtractionStatusText.Text = quickInputIsReady
+                ? $"已发现 {discovery.Archives.Count:N0} 个 XP3 归档；请选择资源类别和全新的导出目录。"
+                : "此输入不能用于一键解包；请查看报告并选择其他输入。";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+        {
+            quickGameInput = null;
+            quickInputIsReady = false;
+            QuickGameInputText.Text = "尚未选择可用输入";
+            QuickExtractionStatusText.Text = "无法读取所选游戏输入。";
+            QuickExtractionReportText.Text = $"错误：{exception.Message}";
+        }
+        finally
+        {
+            UpdateQuickExtractionActionState();
+        }
+    }
+
+    private void SelectQuickOutputDirectoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "选择新导出目录的父目录" };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var suggestedName = quickGameInput is null
+            ? "kiriscope-extracted"
+            : $"{GetQuickInputDisplayName(quickGameInput)}-extracted";
+        var candidate = Path.Combine(dialog.FolderName, suggestedName);
+        if (Directory.Exists(candidate) || File.Exists(candidate))
+        {
+            candidate = Path.Combine(dialog.FolderName, $"{suggestedName}-{DateTime.Now:yyyyMMdd-HHmmss}");
+        }
+
+        QuickOutputDirectoryText.Text = candidate;
+        QuickExtractionStatusText.Text = "已设置全新的导出目录；开始前会再次检查路径和覆盖风险。";
+        UpdateQuickExtractionActionState();
+    }
+
+    private async void StartQuickExtractionButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (quickGameInput is null || !quickInputIsReady)
+        {
+            QuickExtractionStatusText.Text = "请先选择可用的游戏目录、XP3 或完整游戏 ZIP。";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(QuickOutputDirectoryText.Text))
+        {
+            QuickExtractionStatusText.Text = "请选择全新的导出目录。";
+            return;
+        }
+
+        if (!TryGetQuickResourceCategory(out var category))
+        {
+            QuickExtractionStatusText.Text = "请选择有效的资源类别。";
+            return;
+        }
+
+        quickExtractionCancellation = new CancellationTokenSource();
+        UpdateQuickExtractionActionState();
+        QuickExtractionReportText.Text = string.Empty;
+        QuickExtractionStatusText.Text = "正在生成解包任务…";
+        try
+        {
+            var progress = new Progress<string>(message => QuickExtractionStatusText.Text = message);
+            var extractionOptions = await CreateBundledCompatibilityOptionsAsync(quickExtractionCancellation.Token);
+            var result = await GameExtractionService.ExtractAsync(
+                quickGameInput,
+                category,
+                QuickOutputDirectoryText.Text.Trim(),
+                extractionOptions,
+                progress: progress,
+                cancellationToken: quickExtractionCancellation.Token);
+            QuickExtractionReportText.Text = FormatQuickExtraction(result);
+            QuickExtractionStatusText.Text = result.HasErrors
+                ? "解包未完整完成；请查看报告中的明确原因。"
+                : $"解包完成：已导出 {result.ExtractedEntryCount:N0} 个条目，跳过 {result.SkippedEntryCount:N0} 个条目。";
+        }
+        catch (OperationCanceledException)
+        {
+            QuickExtractionStatusText.Text = "解包已取消；已完成写入的条目保持在所选导出目录中，未完成条目不会落盘。";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+        {
+            QuickExtractionStatusText.Text = "解包未完成。";
+            QuickExtractionReportText.Text = $"错误：{exception.Message}";
+        }
+        finally
+        {
+            quickExtractionCancellation.Dispose();
+            quickExtractionCancellation = null;
+            UpdateQuickExtractionActionState();
+        }
+    }
+
+    private void CancelQuickExtractionButton_Click(object sender, RoutedEventArgs e)
+    {
+        quickExtractionCancellation?.Cancel();
+        CancelQuickExtractionButton.IsEnabled = false;
+        QuickExtractionStatusText.Text = "正在取消解包任务…";
+    }
+
+    private void OpenQuickOutputDirectoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Directory.Exists(QuickOutputDirectoryText.Text))
+        {
+            QuickExtractionStatusText.Text = "当前没有可打开的导出目录。";
+            UpdateQuickExtractionActionState();
+            return;
+        }
+
+        OpenDirectory(QuickOutputDirectoryText.Text);
+    }
+
+    private bool TryGetQuickResourceCategory(out ResourceCategory category)
+    {
+        var tag = (QuickCategoryComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string;
+        return Enum.TryParse(tag, ignoreCase: true, out category);
+    }
+
+    private void UpdateQuickExtractionActionState()
+    {
+        var isRunning = quickExtractionCancellation is not null;
+        StartQuickExtractionButton.IsEnabled = !isRunning && quickInputIsReady && !string.IsNullOrWhiteSpace(QuickOutputDirectoryText.Text);
+        CancelQuickExtractionButton.IsEnabled = isRunning;
+        OpenQuickOutputDirectoryButton.IsEnabled = !isRunning && Directory.Exists(QuickOutputDirectoryText.Text);
+    }
+
+    private void QuickOutputDirectoryText_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateQuickExtractionActionState();
+
+    private async void SelectResearchGameDirectoryButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "选择用于研究的已授权游戏目录" };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var input = GameInput.FromPath(dialog.FolderName);
+            if (input.Kind != GameInputKind.GameDirectory)
+            {
+                throw new ArgumentException("研究包只接受游戏目录输入。", nameof(dialog.FolderName));
+            }
+
+            ResearchStatusText.Text = "正在只读检查游戏目录…";
+            var discovery = await GameExtractionService.DiscoverAsync(input);
+            researchGameDirectory = input.InputPath;
+            ResearchGameDirectoryText.Text = input.InputPath;
+            ResearchReportText.Text = FormatQuickDiscovery(discovery);
+            ResearchStatusText.Text = discovery.HasErrors
+                ? "游戏目录包含无法安全处理的内容；请查看报告。"
+                : $"已选择游戏目录；发现 {discovery.Archives.Count:N0} 个 XP3 归档。";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException)
+        {
+            researchGameDirectory = null;
+            ResearchGameDirectoryText.Text = "尚未选择游戏目录";
+            ResearchStatusText.Text = "无法使用所选目录创建研究包。";
+            ResearchReportText.Text = $"错误：{exception.Message}";
+        }
+        finally
+        {
+            UpdateResearchPackageActionState();
+        }
+    }
+
+    private void SelectResearchOutputPathButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog { Title = "选择新研究报告的父目录" };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var displayName = string.IsNullOrWhiteSpace(researchGameDirectory)
+            ? "game"
+            : new DirectoryInfo(researchGameDirectory).Name;
+        var candidate = Path.Combine(dialog.FolderName, $"{displayName}-research.json");
+        if (File.Exists(candidate) || Directory.Exists(candidate))
+        {
+            candidate = Path.Combine(dialog.FolderName, $"{displayName}-research-{DateTime.Now:yyyyMMdd-HHmmss}.json");
+        }
+
+        ResearchOutputPathText.Text = candidate;
+        ResearchStatusText.Text = "已设置全新的研究报告路径；创建前会再次检查不会写入游戏目录或覆盖已有报告。";
+        UpdateResearchPackageActionState();
+    }
+
+    private void SelectResearchRuntimeEvidenceButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择既有的、已授权生成的运行时报告（可多选）",
+            Filter = "JSON 报告|*.json|所有文件|*.*",
+            CheckFileExists = true,
+            Multiselect = true,
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        foreach (var path in dialog.FileNames)
+        {
+            if (!researchRuntimeEvidencePaths.Contains(path, StringComparer.OrdinalIgnoreCase))
+            {
+                researchRuntimeEvidencePaths.Add(path);
+            }
+        }
+
+        ResearchStatusText.Text = $"已关联 {researchRuntimeEvidencePaths.Count:N0} 份既有运行时报告；研究包只会记录它们的路径、大小和 SHA-256。";
+    }
+
+    private async void CreateResearchPackageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(researchGameDirectory) || string.IsNullOrWhiteSpace(ResearchOutputPathText.Text))
+        {
+            ResearchStatusText.Text = "请选择游戏目录和全新的研究报告路径。";
+            return;
+        }
+
+        researchPackageCancellation = new CancellationTokenSource();
+        UpdateResearchPackageActionState();
+        ResearchReportText.Text = string.Empty;
+        ResearchStatusText.Text = "正在只读收集研究包…";
+        try
+        {
+            var outputPath = ResearchOutputPathText.Text.Trim();
+            var knowledgeRoot = FindBundledKnowledgeRoot();
+            var reproductionCommand = $"kiriscope research package \"{Path.GetFullPath(researchGameDirectory)}\" \"{Path.GetFullPath(outputPath)}\"";
+            var reportPath = await GameResearchPackageService.CollectAndWriteNewAsync(
+                researchGameDirectory,
+                outputPath,
+                reproductionCommand,
+                new GameResearchPackageOptions
+                {
+                    KnowledgeRoot = knowledgeRoot,
+                    RuntimeEvidencePaths = researchRuntimeEvidencePaths,
+                },
+                researchPackageCancellation.Token);
+            ResearchStatusText.Text = "研究包已创建；未修改游戏目录或既有报告。";
+            ResearchReportText.Text = string.Join(Environment.NewLine,
+                $"报告：{reportPath}",
+                $"关联的既有运行时报告：{researchRuntimeEvidencePaths.Count:N0}",
+                $"知识库：{knowledgeRoot ?? "未配置"}",
+                "静态分析中的原始二进制字符串已从研究包中移除。");
+        }
+        catch (OperationCanceledException)
+        {
+            ResearchStatusText.Text = "研究包收集已取消；不会覆盖或替换已有报告。";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or KnowledgeBaseException)
+        {
+            ResearchStatusText.Text = "研究包未创建。";
+            ResearchReportText.Text = $"错误：{exception.Message}";
+        }
+        finally
+        {
+            researchPackageCancellation.Dispose();
+            researchPackageCancellation = null;
+            UpdateResearchPackageActionState();
+        }
+    }
+
+    private void CancelResearchPackageButton_Click(object sender, RoutedEventArgs e)
+    {
+        researchPackageCancellation?.Cancel();
+        CancelResearchPackageButton.IsEnabled = false;
+        ResearchStatusText.Text = "正在取消研究包收集…";
+    }
+
+    private void OpenResearchPackageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var reportDirectory = Path.GetDirectoryName(ResearchOutputPathText.Text);
+        if (string.IsNullOrWhiteSpace(reportDirectory) || !Directory.Exists(reportDirectory))
+        {
+            ResearchStatusText.Text = "当前没有可打开的研究报告目录。";
+            UpdateResearchPackageActionState();
+            return;
+        }
+
+        OpenDirectory(reportDirectory);
+    }
+
+    private void ResearchOutputPathText_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e) => UpdateResearchPackageActionState();
+
+    private void UpdateResearchPackageActionState()
+    {
+        var isRunning = researchPackageCancellation is not null;
+        CreateResearchPackageButton.IsEnabled = !isRunning && !string.IsNullOrWhiteSpace(researchGameDirectory) && !string.IsNullOrWhiteSpace(ResearchOutputPathText.Text);
+        CancelResearchPackageButton.IsEnabled = isRunning;
+        OpenResearchPackageButton.IsEnabled = !isRunning && File.Exists(ResearchOutputPathText.Text);
+    }
+
+    private static string? FindBundledKnowledgeRoot()
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "plugins");
+        return File.Exists(Path.Combine(root, KnowledgeBaseLoader.ManifestFileName)) ? root : null;
+    }
+
+    private static void OpenDirectory(string directoryPath) => Process.Start(new ProcessStartInfo
+    {
+        FileName = directoryPath,
+        UseShellExecute = true,
+    });
+
+    private static string GetQuickInputDisplayName(GameInput input) => input.Kind == GameInputKind.GameDirectory
+        ? new DirectoryInfo(input.InputPath).Name
+        : Path.GetFileNameWithoutExtension(input.InputPath);
+
+    private static string FormatQuickDiscovery(GameInputDiscoveryResult discovery)
+    {
+        var lines = new List<string>
+        {
+            $"输入类型：{QuickInputKindName(discovery.Input.Kind)}",
+            $"发现 XP3：{discovery.Archives.Count:N0}",
+            $"可执行文件：{discovery.Executables.Count:N0}",
+            $"插件：{discovery.Plugins.Count:N0}",
+            string.Empty,
+            "XP3：",
+        };
+        lines.AddRange(discovery.Archives.Take(100).Select(static archive => archive.RelativePath));
+        if (discovery.Archives.Count > 100)
+        {
+            lines.Add("仅显示前 100 个 XP3。");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(FormatDiagnostics(discovery.Diagnostics));
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string FormatQuickExtraction(ExtractionTaskResult result)
+    {
+        var lines = new List<string>
+        {
+            $"导出目录：{result.OutputDirectory}",
+            $"资源类别：{QuickCategoryName(result.Category)}",
+            $"兼容配置：{QuickCompatibilityName(result.Compatibility)}",
+            $"已选择条目：{result.SelectedEntryCount:N0}",
+            $"已导出条目：{result.ExtractedEntryCount:N0}",
+            $"跳过/失败条目：{result.SkippedEntryCount:N0}",
+            $"识别到内容签名：{result.RecognizedResourceCount:N0}",
+            $"通过结构验证：{result.FormatValidatedResourceCount:N0}",
+            $"未执行结构验证：{result.ValidationSkippedResourceCount:N0}",
+            $"路径类别与内容不一致：{result.CategoryMismatchCount:N0}",
+            $"临时处理的包内归档：{result.TemporarilyStagedArchiveCount:N0}",
+            string.Empty,
+        };
+        foreach (var archive in result.Archives)
+        {
+            lines.Add($"{archive.SourcePath}：{(archive.WasTemporarilyStaged ? "已临时处理；" : string.Empty)}索引 {(archive.IndexWasParsed ? "已解析" : "未解析")}，已导出 {archive.ExtractedEntryCount:N0}，跳过 {archive.SkippedEntryCount:N0}");
+            foreach (var entry in archive.Entries.Where(static entry => !entry.Succeeded).Take(20))
+            {
+                lines.Add($"  {entry.EntryName}：{FormatDiagnostics(entry.Diagnostics)}");
+            }
+        }
+
+        foreach (var validation in result.ResourceValidations
+                     .Where(static item => item.DetectedCategory is not null && item.DetectedCategory != item.PathCategory || item.ValidationAttempted && !item.IsFormatValidated)
+                     .Take(20))
+        {
+            lines.Add($"验证 {validation.EntryName}：{validation.DetectedFormat}，{FormatDiagnostics(validation.Diagnostics)}");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(FormatDiagnostics(result.Diagnostics));
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string QuickInputKindName(GameInputKind kind) => kind switch
+    {
+        GameInputKind.GameDirectory => "游戏目录",
+        GameInputKind.Xp3Archive => "XP3 归档",
+        GameInputKind.GamePackage => "完整游戏 ZIP",
+        _ => kind.ToString(),
+    };
+
+    private static string QuickCategoryName(ResourceCategory category) => category switch
+    {
+        ResourceCategory.All => "全部",
+        ResourceCategory.Images => "图片",
+        ResourceCategory.Audio => "音频",
+        ResourceCategory.Scripts => "脚本",
+        ResourceCategory.Other => "其他",
+        _ => category.ToString(),
+    };
+
+    private static string QuickCompatibilityName(GameCompatibilityResolution compatibility) => compatibility.Kind == GameCompatibilityResolutionKind.Selected
+        ? $"{compatibility.Selected!.SchemeId}@{compatibility.Selected.SchemeRevision}"
+        : compatibility.Kind.ToString();
+
+    private static async Task<GameExtractionOptions?> CreateBundledCompatibilityOptionsAsync(CancellationToken cancellationToken)
+    {
+        var root = Path.Combine(AppContext.BaseDirectory, "plugins");
+        var resolver = File.Exists(Path.Combine(root, KnowledgeBaseLoader.ManifestFileName))
+            ? new KnowledgeGameCompatibilityResolver(root)
+            : null;
+        var runtimeCaptureHelper = await BundledRuntimeCapture.ExtractAsync(cancellationToken);
+        return resolver is null && runtimeCaptureHelper is null
+            ? null
+            : new GameExtractionOptions
+            {
+                CompatibilityResolver = resolver,
+                RuntimeExtractionFallback = runtimeCaptureHelper is null ? null : new KirikiriRuntimeExtractionFallback(runtimeCaptureHelper),
+            };
     }
 
     private async void OpenResourceButton_Click(object sender, RoutedEventArgs e)

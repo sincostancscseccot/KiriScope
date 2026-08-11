@@ -21,6 +21,58 @@
         <TextBlock Grid.Row="1" Margin="0,6,0,18" Foreground="Gray"
                    Text="KiriKiri 资源分析、验证与可复现研究工作台" />
         <TabControl Grid.Row="2">
+            <TabItem Header="一键解包">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock TextWrapping="Wrap" Foreground="#FF555555"
+                               Text="选择游戏目录、单个 XP3 或完整游戏 ZIP；选择资源类别和全新导出目录后即可开始。压缩包只读处理，未知或加密条目会在结果中如实列出。" />
+                    <Grid Grid.Row="1" Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Padding="14,6" Content="选择游戏目录…" Click="SelectQuickGameDirectoryButton_Click" />
+                        <Button Grid.Column="1" Margin="8,0,0,0" Padding="14,6" Content="选择 XP3 或游戏 ZIP…" Click="SelectQuickGameFileButton_Click" />
+                        <TextBox x:Name="QuickGameInputText" Grid.Column="2" Margin="12,0,0,0" IsReadOnly="True" Text="尚未选择输入" />
+                    </Grid>
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="导出资源：" />
+                        <ComboBox x:Name="QuickCategoryComboBox" Grid.Column="1" Margin="8,0,16,0" SelectedIndex="0">
+                            <ComboBoxItem Tag="All" Content="全部" />
+                            <ComboBoxItem Tag="Images" Content="图片" />
+                            <ComboBoxItem Tag="Audio" Content="音频" />
+                            <ComboBoxItem Tag="Scripts" Content="脚本" />
+                            <ComboBoxItem Tag="Other" Content="其他" />
+                        </ComboBox>
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="全新导出目录：" />
+                        <DockPanel Grid.Column="3" Margin="8,0,0,0">
+                            <Button DockPanel.Dock="Right" Padding="14,6" Content="选择位置…" Click="SelectQuickOutputDirectoryButton_Click" />
+                            <TextBox x:Name="QuickOutputDirectoryText" Margin="0,0,8,0" TextChanged="QuickOutputDirectoryText_Changed" />
+                        </DockPanel>
+                    </Grid>
+                    <StackPanel Grid.Row="3" Margin="0,16,0,0" Orientation="Horizontal">
+                        <Button x:Name="StartQuickExtractionButton" Padding="16,7" Content="开始解包" Click="StartQuickExtractionButton_Click" IsEnabled="False" />
+                        <Button x:Name="CancelQuickExtractionButton" Margin="8,0,0,0" Padding="16,7" Content="取消" Click="CancelQuickExtractionButton_Click" IsEnabled="False" />
+                        <Button x:Name="OpenQuickOutputDirectoryButton" Margin="8,0,0,0" Padding="16,7" Content="打开导出目录" Click="OpenQuickOutputDirectoryButton_Click" IsEnabled="False" />
+                    </StackPanel>
+                    <TextBlock x:Name="QuickExtractionStatusText" Grid.Row="4" Margin="0,14,0,8" Foreground="#FF555555" Text="请选择输入和全新的导出目录。" TextWrapping="Wrap" />
+                    <TextBox x:Name="QuickExtractionReportText" Grid.Row="5" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
+                </Grid>
+            </TabItem>
             <TabItem Header="资源验证">
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
@@ -138,6 +190,47 @@
                     <DockPanel Grid.Row="6">
                         <TextBlock x:Name="Xp3StatusText" DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="#FF555555" Text="请选择游戏目录或 XP3 归档。" TextWrapping="Wrap" />
                         <TextBox x:Name="Xp3ReportText" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="高级研究">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock TextWrapping="Wrap" Foreground="#FF555555"
+                               Text="此页仅用于已获授权的未知变体研究，不影响一键解包。研究包只汇总 XP3 摘要、脱敏静态分析、知识库扫描和你明确选择的既有运行时报告哈希；它不会执行游戏、读取内存或写入游戏目录。" />
+                    <Grid Grid.Row="1" Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button Padding="14,6" Content="选择游戏目录…" Click="SelectResearchGameDirectoryButton_Click" />
+                        <TextBox x:Name="ResearchGameDirectoryText" Grid.Column="1" Margin="12,0,0,0" IsReadOnly="True" Text="尚未选择游戏目录" />
+                    </Grid>
+                    <Grid Grid.Row="2" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Text="新研究报告：" />
+                        <TextBox x:Name="ResearchOutputPathText" Grid.Column="1" Margin="8,0" TextChanged="ResearchOutputPathText_Changed" />
+                        <Button Grid.Column="2" Padding="14,6" Content="选择位置…" Click="SelectResearchOutputPathButton_Click" />
+                    </Grid>
+                    <StackPanel Grid.Row="3" Margin="0,16,0,0" Orientation="Horizontal">
+                        <Button x:Name="SelectResearchRuntimeEvidenceButton" Padding="14,6" Content="关联既有运行时报告…" Click="SelectResearchRuntimeEvidenceButton_Click" />
+                        <Button x:Name="CreateResearchPackageButton" Margin="8,0,0,0" Padding="16,7" Content="创建研究包" Click="CreateResearchPackageButton_Click" IsEnabled="False" />
+                        <Button x:Name="CancelResearchPackageButton" Margin="8,0,0,0" Padding="16,7" Content="取消" Click="CancelResearchPackageButton_Click" IsEnabled="False" />
+                        <Button x:Name="OpenResearchPackageButton" Margin="8,0,0,0" Padding="16,7" Content="打开报告位置" Click="OpenResearchPackageButton_Click" IsEnabled="False" />
+                    </StackPanel>
+                    <DockPanel Grid.Row="4" Margin="0,14,0,0">
+                        <TextBlock x:Name="ResearchStatusText" DockPanel.Dock="Top" Margin="0,0,0,8" Foreground="#FF555555" Text="请选择游戏目录和全新的研究报告路径。" TextWrapping="Wrap" />
+                        <TextBox x:Name="ResearchReportText" BorderThickness="0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" />
                     </DockPanel>
                 </Grid>
             </TabItem>

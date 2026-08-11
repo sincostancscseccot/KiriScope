@@ -13,17 +13,35 @@ public static class ResourceFormatScorer
         ReadOnlyMemory<byte> content,
         CancellationToken cancellationToken = default)
     {
-        var format = ResourceFormatDetector.Detect(content.Span[..Math.Min(content.Length, 32)]);
         await using var stream = new MemoryStream(content.ToArray(), writable: false);
+        return await ScoreAsync(stream, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Scores a seekable resource stream without requiring callers to materialize the entire file in memory.</summary>
+    public static async Task<ResourceFormatScore> ScoreAsync(
+        Stream input,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (!input.CanRead || !input.CanSeek)
+        {
+            throw new ArgumentException("Resource scoring requires a readable, seekable stream.", nameof(input));
+        }
+
+        input.Position = 0;
+        var header = new byte[32];
+        var headerLength = await input.ReadAsync(header, cancellationToken).ConfigureAwait(false);
+        var format = ResourceFormatDetector.Detect(header.AsSpan(0, headerLength));
+        input.Position = 0;
 
         return format switch
         {
-            ResourceFormat.Png => FromPng(await PngValidator.ValidateAsync(stream, cancellationToken).ConfigureAwait(false)),
-            ResourceFormat.Bmp => FromBmp(await BmpValidator.ValidateAsync(stream, cancellationToken).ConfigureAwait(false)),
-            ResourceFormat.Wave => FromWave(await WaveValidator.ValidateAsync(stream, cancellationToken).ConfigureAwait(false)),
-            ResourceFormat.Jpeg => FromJpeg(await JpegValidator.ValidateAsync(stream, cancellationToken).ConfigureAwait(false)),
-            ResourceFormat.Tlg => FromTlg(await TlgMetadataReader.ReadAsync(stream, cancellationToken).ConfigureAwait(false)),
-            ResourceFormat.Psb => await FromPsbAsync(stream, cancellationToken).ConfigureAwait(false),
+            ResourceFormat.Png => FromPng(await PngValidator.ValidateAsync(input, cancellationToken).ConfigureAwait(false)),
+            ResourceFormat.Bmp => FromBmp(await BmpValidator.ValidateAsync(input, cancellationToken).ConfigureAwait(false)),
+            ResourceFormat.Wave => FromWave(await WaveValidator.ValidateAsync(input, cancellationToken).ConfigureAwait(false)),
+            ResourceFormat.Jpeg => FromJpeg(await JpegValidator.ValidateAsync(input, cancellationToken).ConfigureAwait(false)),
+            ResourceFormat.Tlg => FromTlg(await TlgMetadataReader.ReadAsync(input, cancellationToken).ConfigureAwait(false)),
+            ResourceFormat.Psb => await FromPsbAsync(input, cancellationToken).ConfigureAwait(false),
             ResourceFormat.Pimg => IdentifiedOnly(format, "PIMG_FORMAT_IDENTIFIED", "PIMG signature identified, but no structural validator is available yet."),
             ResourceFormat.Ogg => IdentifiedOnly(format, "OGG_FORMAT_IDENTIFIED", "Ogg signature identified, but no structural validator is available yet."),
             _ => new ResourceFormatScore(

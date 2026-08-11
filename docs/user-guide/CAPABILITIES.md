@@ -20,6 +20,7 @@ GUI 可通过 `Build-GuiSingleFile.ps1` 打包为一个自包含 EXE。它不包
 | 目标 | 可用命令/入口 | 当前能够完成 | 重要边界 |
 |---|---|---|---|
 | 先检查文件 | GUI 的“XP3 归档与方案”标签，或 `probe`、`verify`、`xp3 list`、`xp3 profile`、`psb profile` | GUI 可只读发现 `.xp3`、读取索引、显示条目状态；CLI 可计算 SHA-256，并读取 XP3 索引或 PSB/PIMG 的直接根资源。 | 全程只读；识别格式不等于解码。 |
+| 一键解包标准内容 | GUI 的“一键解包”标签，或 `unpack <游戏目录\|XP3\|游戏.zip> <新输出目录> --category <类别>` | 只读扫描游戏目录、独立 XP3 或完整游戏 ZIP，按“全部/图片/音频/脚本/其他”导出未标记加密的条目；多归档按来源保留目录结构。导出后会对受支持签名执行有上限的结构验证，并报告内容格式与路径类别是否一致。若内置受信任知识库给出唯一的已验证 SHA-256 命中，也会自动应用对应方案；ZIP 仅会按需暂存包内 XP3、EXE 或 DLL 用于指纹计算。 | ZIP 仅作为只读外层容器；限制条目数和解压体积，拒绝路径逃逸、重复路径、损坏或受保护的包。超出验证大小上限或缺少验证器的文件会明确标为未验证。弱匹配、未验证配置或多个并列命中绝不自动选择方案。 |
 | 导出已验证资源 | GUI 的 XP3 导出，或 `xp3 extract`、`psb extract`、`psb extract-all` | 提取未标记加密的 XP3 条目，或导出 PSB/PIMG 的可验证直接根资源。GUI 只接受全新且位于归档目录外的输出目录。 | 拒绝覆盖和输入目录内输出；导出原始资源不代表图层已合成。 |
 | 转换图像 | `convert bmp-to-png`、`convert tlg5-to-png`、`convert batch-to-png` | 解码并重新验证普通 24/32 位未压缩 BMP 与标准未加密 TLG5；批量转换保留相对路径。 | BMP 的 RLE、嵌入 JPEG/PNG 和旧式 DIB 变体不会被强行转换。 |
 | 兼容性后备转换 | `convert tlg-to-png --freemote <EmtConvert.exe>` | 显式调用用户提供的 FreeMote 工具，将临时副本转换为 PNG 后再验证。 | 不捆绑、不自动查找外部工具；成功只证明导出的 PNG 有效。 |
@@ -27,9 +28,10 @@ GUI 可通过 `Build-GuiSingleFile.ps1` 打包为一个自包含 EXE。它不包
 | 新建研究归档 | `xp3 pack` | 从暂存目录生成全新的标准、未加密、未压缩 XP3。 | 不原位编辑已有归档；不保证目标游戏接受生成的归档。 |
 | 比较松散文件 | `overlay plan` | 只读比较参考目录和覆盖目录，生成哈希化的覆盖计划。 | 不复制、部署或删除游戏文件；加载优先级仍须人工验证。 |
 | 静态研究 | `analyze pe`、`analyze directory`、`analyze archive`、`report compare static` | 读取 PE、导入、字符串和插件目录，生成可复现归档与差异报告。 | 不加载或执行输入；启发式观察不会升格为兼容性事实。 |
+| 汇总未知样本研究 | `research package <游戏目录> <新报告.json>` | 将 XP3 的哈希/索引摘要、去除原始字符串的目录静态分析、可选知识库扫描和既有运行时报告的哈希引用汇总为可复现 JSON。 | 仅接受游戏目录和全新、目录外报告路径；不嵌入游戏内容或原始二进制字符串，不执行输入，也不会启动或采集运行时。 |
 | 可选 Ghidra 分析 | `analyze ghidra ... --headless <工具路径>` | 在显式指定的外部 Ghidra 路径下运行 headless 分析并归档过程信息。 | 工具缺失时只报告诊断；KiriScope 不捆绑 Ghidra。 |
 | 受控运行时证据 | `analyze runtime inspect`、`snapshot`、`import-procmon`、`compare-procmon` | 读取已授权 PID 的进程/模块元数据，或离线导入用户导出的 ProcMon CSV。 | 采集默认关闭；不注入、不读进程内存、不暂停/结束目标，也不启动 ProcMon。 |
-| 知识库与候选匹配 | `knowledge validate/list/match/scan/compare` | 验证版本化知识库，对二进制做指纹匹配与只读批量扫描。 | 输出仅是可尝试候选；不会自动选择、应用或宣称方案成功。 |
+| 知识库与候选匹配 | `knowledge validate/list/match/scan/compare`，以及 `unpack ... --knowledge-root <目录>` | 验证版本化知识库，对二进制做指纹匹配与只读批量扫描；一键解包只会使用已验证、精确 SHA-256 且唯一命中的方案。 | 独立的 `knowledge` 研究命令仍只输出候选；参考知识库不含商业作品兼容项，弱匹配或歧义绝不自动应用。 |
 
 ## 按格式查看支持状态
 

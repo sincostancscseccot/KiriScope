@@ -52,6 +52,12 @@ CLI 的等价只读命令：
 
 ### GUI：XP3 归档发现、方案验证与导出
 
+对于标准或未加密内容，优先使用首页的“一键解包”标签：选择游戏目录、独立 XP3 或完整游戏 ZIP，选择“全部/图片/音频/脚本/其他”以及全新的导出目录，再点击 **开始解包**。ZIP 会作为只读虚拟游戏目录处理，程序只会按需临时暂存内部 XP3；需要密码、损坏、路径逃逸或不受支持的压缩包会被拒绝并说明原因。未知或已标记加密条目会保留跳过原因，而不会伪称解密成功。
+
+完成后可直接点击 **打开导出目录**。结果还会显示按内容签名识别到的格式、通过结构验证的数量、尚无验证器或超过验证大小上限的数量，以及“路径扩展名类别与实际内容不一致”的条目；这些差异是审查线索，不会改写原始导出内容。
+
+如果随程序提供的受信任知识库中存在与游戏目录、独立 XP3 或完整游戏 ZIP 内相关文件 **精确 SHA-256** 匹配的已验证配置，界面会自动应用它，并在结果中记录配置 ID、修订版和命中的输入指纹；不会要求你选择 scheme JSON。ZIP 只会按需临时处理包内 XP3、EXE 或 DLL 用于指纹计算。弱匹配、未验证配置或多个方案并列时，程序不会自动选择。
+
 切换到“XP3 归档与方案”标签，按以下顺序操作：
 
 1. 点击 **选择游戏目录…** 以只读发现其中的 `.xp3`，或点击 **选择 XP3 文件…**。
@@ -68,6 +74,18 @@ CLI 的等价只读命令：
 ```powershell
 # 从未标记为加密的 XP3 中提取到一个全新目录
 .\KiriScope.Cli.exe xp3 extract "D:\AuthorizedGame\data.xp3" "D:\KiriScopeOutput\data"
+
+# 一键扫描游戏目录或完整游戏 ZIP，仅导出图片到全新目录
+.\KiriScope.Cli.exe unpack "D:\AuthorizedGame" "D:\KiriScopeOutput\game-images" --category images
+.\KiriScope.Cli.exe unpack "D:\AuthorizedGame\Game.zip" "D:\KiriScopeOutput\game-images-from-zip" --category images
+
+# 高级自动化：使用一份受信任、哈希绑定的知识库；无需传入 scheme JSON
+.\KiriScope.Cli.exe unpack "D:\AuthorizedGame" "D:\KiriScopeOutput\game" --knowledge-root "D:\KiriScopeKnowledge"
+
+# 为未知变体创建只读研究包；可选的运行时报告必须是已通过其他显式授权流程创建的既有文件
+.\KiriScope.Cli.exe research package "D:\AuthorizedGame" "D:\KiriScopeReports\game-research.json" `
+  --knowledge-root "D:\KiriScopeKnowledge" `
+  --runtime-evidence "D:\KiriScopeReports\runtime.json"
 
 # 导出 PIMG/PSB 的所有可验证根资源
 .\KiriScope.Cli.exe psb extract-all "D:\AuthorizedGame\scene.pimg" "D:\KiriScopeOutput\scene"
@@ -98,6 +116,10 @@ CLI 的等价只读命令：
 .\KiriScope.Cli.exe analyze runtime inspect 1234
 .\KiriScope.Cli.exe analyze runtime snapshot 1234 "D:\KiriScopeReports\runtime.json" --enable-runtime-capture
 ```
+
+如需将静态分析、XP3 摘要、知识库候选和已有运行时报告关联为一次可复现研究，可使用上方的 `research package`。该命令不会触发运行时采集；`--runtime-evidence` 只会写入你明确提供的既有报告的路径、大小和 SHA-256。研究包会移除静态分析中的原始二进制字符串，避免把可打印内容复制进可共享的 JSON。
+
+GUI 中也可切换到 **高级研究** 页：选择已授权的游戏目录和一个全新的报告路径；如有需要，再关联由既有显式授权流程生成的运行时报告。该页不会启动游戏或运行时采集。
 
 如需文件访问线索，请自行用受信任工具导出 ProcMon CSV，再离线导入。KiriScope 不会自动启动 ProcMon 或加载其驱动。详见[运行时证据采集](../runtime/RUNTIME_EVIDENCE.md)。
 

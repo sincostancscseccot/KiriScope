@@ -4,6 +4,7 @@
     <ProjectReference Include="..\KiriScope.Core\KiriScope.Core.csproj" />
     <ProjectReference Include="..\KiriScope.IO\KiriScope.IO.csproj" />
     <ProjectReference Include="..\KiriScope.Plugins.Abstractions\KiriScope.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\KiriScope.Resources\KiriScope.Resources.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

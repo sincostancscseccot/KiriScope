@@ -11,7 +11,7 @@ KiriScope 的正式 Windows 发布包含同一份自包含的 x64 GUI/CLI、x64 
 .\packaging\Build-Release.ps1 -Version 0.1.0
 ```
 
-输出位于 `artifacts\releases\<version>\`。脚本默认先运行全部测试，然后分别发布 GUI、CLI、x64 worker 与 x86 worker。它会验证四个启动文件存在，生成 ZIP，并调用 Inno Setup 编译安装包。每个版本目录都是新建目录；脚本拒绝覆盖已有版本。
+输出位于 `artifacts\releases\<version>\`。脚本默认先运行全部测试，然后分别发布 GUI、CLI、x64 worker 与 x86 worker。它会验证四个启动文件存在，生成 ZIP，并检查 ZIP 中包含 GUI、CLI、双架构 worker 与知识库，同时拒绝把插件模板的 `bin/obj` 构建缓存带进发布包；随后调用 Inno Setup 编译安装包。每个版本目录都是新建目录；脚本拒绝覆盖已有版本。
 
 构建完成后会额外生成 `KiriScope-<version>-release-manifest.json`。它记录 ZIP、安装包及四个 KiriScope 可执行文件的 SHA-256、大小和 Authenticode 状态。安装包语言包含英语、简体中文和日语；简体中文覆盖常规向导页面与 KiriScope 专用文字，少见的安装引擎诊断会安全回退到 Inno Setup 的英文默认文字。
 

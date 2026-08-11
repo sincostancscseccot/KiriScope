@@ -24,6 +24,10 @@
   <ItemGroup>
     <None Include="..\KiriScope.Worker.X86\bin\$(Configuration)\net10.0-windows\KiriScope.Worker.X86.*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\KiriScope.Worker.X64\bin\$(Configuration)\net10.0-windows\KiriScope.Worker.X64.*" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\plugins\**\*"
+          Exclude="..\..\plugins\templates\**\bin\**\*;..\..\plugins\templates\**\obj\**\*"
+          Link="plugins\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

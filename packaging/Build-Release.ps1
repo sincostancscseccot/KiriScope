@@ -80,6 +80,39 @@ function Resolve-InnoSetupCompiler {
     return $compiler
 }
 
+function Test-PortableArchive {
+    param(
+        [string]$ArchivePath,
+        [string]$PortableName
+    )
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+    try {
+        $entries = $archive.Entries.FullName | ForEach-Object { $_.Replace('\', '/') }
+        $requiredEntries = @(
+            "$PortableName/KiriScope.Gui.exe",
+            "$PortableName/KiriScope.Cli.exe",
+            "$PortableName/workers/x64/KiriScope.Worker.X64.exe",
+            "$PortableName/workers/x86/KiriScope.Worker.X86.exe",
+            "$PortableName/plugins/knowledge-base.json"
+        )
+        foreach ($requiredEntry in $requiredEntries) {
+            if ($requiredEntry -notin $entries) {
+                throw "Portable archive is missing the required entry: $requiredEntry"
+            }
+        }
+
+        $unexpectedBuildArtifacts = $entries | Where-Object { $_ -match '/plugins/templates/.+/(bin|obj)/' }
+        if ($unexpectedBuildArtifacts) {
+            throw "Portable archive contains excluded plugin-template build artifacts: $($unexpectedBuildArtifacts -join ', ')"
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+}
+
 function Get-ReleaseFileRecord {
     param(
         [string]$Path,
@@ -195,6 +228,7 @@ Compress-Archive -LiteralPath $portableDirectory -DestinationPath $portableArchi
 if (-not (Test-Path -LiteralPath $portableArchive -PathType Leaf)) {
     throw "Portable archive was not created: $portableArchive"
 }
+Test-PortableArchive -ArchivePath $portableArchive -PortableName $portableName
 
 $innoSetupCompiler = Resolve-InnoSetupCompiler
 & $innoSetupCompiler "/DMyAppVersion=$Version" "/DSourceDir=$portableDirectory" "/DOutputDir=$artifactDirectory" $installerScript

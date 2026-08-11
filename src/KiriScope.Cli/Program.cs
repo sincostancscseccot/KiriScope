@@ -194,6 +194,43 @@ static async Task<int> RunAsync(string[] args)
         }
     }
 
+    if (args is ["unpack", var gameInputPath, var gameOutputDirectory])
+    {
+        return await UnpackGameAsync(gameInputPath, gameOutputDirectory, ResourceCategory.All, null);
+    }
+
+    if (args is ["unpack", var categorizedGameInputPath, var categorizedGameOutputDirectory, "--category", var categoryText])
+    {
+        if (!TryParseResourceCategory(categoryText, out var category))
+        {
+            Console.Error.WriteLine("--category must be one of: all, images, audio, scripts, other.");
+            return 2;
+        }
+
+        return await UnpackGameAsync(categorizedGameInputPath, categorizedGameOutputDirectory, category, null);
+    }
+
+    if (args is ["unpack", var knowledgeGameInputPath, var knowledgeGameOutputDirectory, "--knowledge-root", var unpackKnowledgeRoot])
+    {
+        return await UnpackGameAsync(knowledgeGameInputPath, knowledgeGameOutputDirectory, ResourceCategory.All, unpackKnowledgeRoot);
+    }
+
+    if (args is ["unpack", var categorizedKnowledgeGameInputPath, var categorizedKnowledgeGameOutputDirectory, "--category", var categorizedKnowledgeCategoryText, "--knowledge-root", var categorizedKnowledgeRoot])
+    {
+        if (!TryParseResourceCategory(categorizedKnowledgeCategoryText, out var category))
+        {
+            Console.Error.WriteLine("--category must be one of: all, images, audio, scripts, other.");
+            return 2;
+        }
+
+        return await UnpackGameAsync(categorizedKnowledgeGameInputPath, categorizedKnowledgeGameOutputDirectory, category, categorizedKnowledgeRoot);
+    }
+
+    if (args.Length >= 4 && string.Equals(args[0], "research", StringComparison.Ordinal) && string.Equals(args[1], "package", StringComparison.Ordinal))
+    {
+        return await CreateGameResearchPackageAsync(args[2..]);
+    }
+
     if (args.Length >= 4 && string.Equals(args[0], "filter", StringComparison.Ordinal) && string.Equals(args[1], "score", StringComparison.Ordinal))
     {
         return await ScoreFilterCandidatesAsync(args[2..]);
@@ -265,6 +302,8 @@ static async Task<int> RunAsync(string[] args)
           kiriscope xp3 extract <archive> <output-directory>
           kiriscope xp3 extract <archive> <output-directory> --xor-hex <hex-key>
           kiriscope xp3 extract <archive> <output-directory> --scheme <scheme-json>
+          kiriscope unpack <game-directory-or-xp3-or-game.zip> <new-output-directory> [--category all|images|audio|scripts|other] [--knowledge-root <trusted-knowledge-root>]
+          kiriscope research package <game-directory> <new-report.json> [--knowledge-root <trusted-knowledge-root>] [--runtime-evidence <existing-report.json> ...]
           kiriscope filter score <input> <scheme-json> [<scheme-json> ...] [--entry <entry-name>] [--adler32 <hex-or-decimal>]
           kiriscope psb profile <psb-or-pimg>
           kiriscope psb extract <psb-or-pimg> <resource-name> <output-file>
@@ -1048,6 +1087,171 @@ static async Task<int> ExtractAsync(
     });
 
     return result.IndexWasParsed && result.SkippedEntryCount == 0 ? 0 : 3;
+}
+
+static async Task<int> UnpackGameAsync(string inputPath, string outputDirectory, ResourceCategory category, string? knowledgeRoot)
+{
+    try
+    {
+        var input = GameInput.FromPath(inputPath);
+        var resolvedKnowledgeRoot = knowledgeRoot ?? FindBundledKnowledgeRoot();
+        var options = resolvedKnowledgeRoot is null
+            ? null
+            : new GameExtractionOptions { CompatibilityResolver = new KnowledgeGameCompatibilityResolver(resolvedKnowledgeRoot) };
+        var result = await GameExtractionService.ExtractAsync(input, category, outputDirectory, options);
+        WriteJson(result);
+        return result.HasErrors ? 3 : 0;
+    }
+    catch (FileNotFoundException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+    catch (ArgumentException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+    catch (IOException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 3;
+    }
+}
+
+static string? FindBundledKnowledgeRoot()
+{
+    var candidates = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "plugins"),
+        Path.Combine(Environment.CurrentDirectory, "plugins"),
+    };
+    return candidates.FirstOrDefault(candidate => File.Exists(Path.Combine(candidate, KnowledgeBaseLoader.ManifestFileName)));
+}
+
+static async Task<int> CreateGameResearchPackageAsync(string[] args)
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("research package requires a game directory and a new report path.");
+        return 1;
+    }
+
+    var gameDirectory = args[0];
+    var outputPath = args[1];
+    string? knowledgeRoot = null;
+    var runtimeEvidencePaths = new List<string>();
+    for (var index = 2; index < args.Length; index++)
+    {
+        if (string.Equals(args[index], "--knowledge-root", StringComparison.Ordinal))
+        {
+            if (++index >= args.Length || string.IsNullOrWhiteSpace(args[index]))
+            {
+                Console.Error.WriteLine("--knowledge-root requires a directory path.");
+                return 1;
+            }
+
+            knowledgeRoot = args[index];
+            continue;
+        }
+
+        if (string.Equals(args[index], "--runtime-evidence", StringComparison.Ordinal))
+        {
+            if (++index >= args.Length || string.IsNullOrWhiteSpace(args[index]))
+            {
+                Console.Error.WriteLine("--runtime-evidence requires an existing report path.");
+                return 1;
+            }
+
+            runtimeEvidencePaths.Add(args[index]);
+            continue;
+        }
+
+        Console.Error.WriteLine($"Unknown research package option: {args[index]}");
+        return 1;
+    }
+
+    try
+    {
+        var resolvedKnowledgeRoot = knowledgeRoot ?? FindBundledKnowledgeRoot();
+        var reproductionArguments = new List<string>
+        {
+            "kiriscope research package",
+            $"\"{Path.GetFullPath(gameDirectory)}\"",
+            $"\"{Path.GetFullPath(outputPath)}\"",
+        };
+        if (!string.IsNullOrWhiteSpace(resolvedKnowledgeRoot))
+        {
+            reproductionArguments.Add("--knowledge-root");
+            reproductionArguments.Add($"\"{Path.GetFullPath(resolvedKnowledgeRoot)}\"");
+        }
+
+        foreach (var runtimeEvidencePath in runtimeEvidencePaths)
+        {
+            reproductionArguments.Add("--runtime-evidence");
+            reproductionArguments.Add($"\"{Path.GetFullPath(runtimeEvidencePath)}\"");
+        }
+
+        var reproductionCommand = string.Join(' ', reproductionArguments);
+        var reportPath = await GameResearchPackageService.CollectAndWriteNewAsync(
+            gameDirectory,
+            outputPath,
+            reproductionCommand,
+            new GameResearchPackageOptions
+            {
+                KnowledgeRoot = resolvedKnowledgeRoot,
+                RuntimeEvidencePaths = runtimeEvidencePaths,
+            });
+        WriteJson(new
+        {
+            Succeeded = true,
+            ReportPath = reportPath,
+            InputDirectory = Path.GetFullPath(gameDirectory),
+            KnowledgeRoot = resolvedKnowledgeRoot,
+            RuntimeEvidenceReferenceCount = runtimeEvidencePaths.Count,
+        });
+        return 0;
+    }
+    catch (FileNotFoundException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+    catch (DirectoryNotFoundException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+    catch (ArgumentException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 2;
+    }
+    catch (IOException exception)
+    {
+        Console.Error.WriteLine(exception.Message);
+        return 3;
+    }
+}
+
+static bool TryParseResourceCategory(string value, out ResourceCategory category)
+{
+    category = value.ToLowerInvariant() switch
+    {
+        "all" => ResourceCategory.All,
+        "images" or "image" => ResourceCategory.Images,
+        "audio" => ResourceCategory.Audio,
+        "scripts" or "script" => ResourceCategory.Scripts,
+        "other" => ResourceCategory.Other,
+        _ => default,
+    };
+    return value.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("images", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("image", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("audio", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("scripts", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("script", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("other", StringComparison.OrdinalIgnoreCase);
 }
 
 static async Task<int> ScoreFilterCandidatesAsync(string[] args)
