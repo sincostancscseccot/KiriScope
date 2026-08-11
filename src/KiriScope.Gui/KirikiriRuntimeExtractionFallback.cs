@@ -103,7 +103,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 return FailedCaptureResult(
                     input, category, outputDirectory, compatibility, plan,
                     "RUNTIME_CAPTURE_INCOMPLETE",
-                    $"The selected runtime ({layout.DisplayName}) ended or timed out before confirming all requested resources were captured. {captureWait.Description}");
+                    $"The selected runtime ({layout.DisplayName}) ended or timed out before confirming all requested resources were captured. {captureWait.Description} {RuntimeCaptureHelperDescription}");
             }
 
             var manifest = await ReadCaptureManifestAsync(
@@ -132,7 +132,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     "RUNTIME_CAPTURE_MISSING_RESOURCES",
                     $"The selected runtime ({layout.DisplayName}) enumerated {manifest.Expected.Count:N0} resource stream(s), " +
                     $"the proxy declared {manifest.Captured.Count:N0} captured stream(s), and {capturedFiles:N0} capture file(s) were present. " +
-                    $"{missingRequests.Length:N0} requested stream(s) were still missing. {captureWait.Description}");
+                    $"{missingRequests.Length:N0} requested stream(s) were still missing. {captureWait.Description} {RuntimeCaptureHelperDescription}");
             }
 
             progress?.Report("Classifying and moving verified runtime resource streams");
@@ -223,6 +223,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 [.. discovery.Diagnostics, .. compatibility.Diagnostics,
                     Info("RUNTIME_CAPTURE_LAUNCH_TARGET", layout.Description),
                     Info("RUNTIME_CAPTURE_PROCESS_CHAIN", captureWait.Description),
+                    Info("RUNTIME_CAPTURE_HELPER", RuntimeCaptureHelperDescription),
                     Info("RUNTIME_CAPTURE_VERIFIED", $"Enumerated, captured, and verified {manifest.Expected.Count:N0} resource stream(s) with the game's KiriKiri runtime."),
                     Info("RUNTIME_CAPTURE_OPAQUE_INDEX_PATHS", $"Captured {manifest.Expected.Count(static request => IsOpaqueCapturedPath(request.EntryName)):N0} resource stream(s) whose original path was unavailable under an explicit __opaque__ index path."),
                     Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NonResourceEntryCount:N0} non-resource or structurally invalid archive index entr{(plan.NonResourceEntryCount == 1 ? "y" : "ies")}.")]);
@@ -275,6 +276,18 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             candidate.ImportsVersionDll,
             candidate.HasProtectedLauncherHint);
         return true;
+    }
+
+    private string RuntimeCaptureHelperDescription
+    {
+        get
+        {
+            var helperDirectory = Path.GetDirectoryName(helperPath);
+            var helperBuildId = helperDirectory is null ? string.Empty : Path.GetFileName(helperDirectory);
+            return helperBuildId.Length == 64 && helperBuildId.All(static character => Uri.IsHexDigit(character))
+                ? $"Bundled x86 runtime-capture helper SHA-256: {helperBuildId.ToUpperInvariant()}."
+                : "Bundled x86 runtime-capture helper build identifier was unavailable.";
+        }
     }
 
     private static async Task<CapturePlan> BuildPlanAsync(

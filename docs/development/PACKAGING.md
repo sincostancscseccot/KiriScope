@@ -34,7 +34,7 @@ C:\Users\<user>\AppData\Local\Programs\Inno Setup 6\ISCC.exe
 若只需要桌面 GUI，可创建一个可单独复制和运行的 x64 EXE：
 
 ```powershell
-.\packaging\Build-GuiSingleFile.ps1 -Version 0.1.0-preview.21
+.\packaging\Build-GuiSingleFile.ps1 -Version 0.1.0-preview.23
 ```
 
 脚本会在全新的 `artifacts\releases\<version>\` 目录中只留下 `KiriScope.Gui-<version>-win-x64.exe`。它是自包含的，不要求目标机器预先安装 .NET，也不包含 CLI。与普通发布不同，x86/x64 运行时 worker 已作为资源嵌入 GUI；仅当用户填写 PID、勾选授权并启动运行时采集时，GUI 才会将架构匹配的 worker 解压到当前用户的临时目录，校验 SHA-256 后使用。普通资源检查、提取和转换不会产生这些临时文件。
