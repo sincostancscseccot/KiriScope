@@ -7,7 +7,7 @@ namespace KiriScope.Core.Tests;
 public sealed class KirikiriRuntimeExecutableProbeTests
 {
     [Fact]
-    public void TryRead_DirectVersionImportOutranksProtectedLauncherHint()
+    public void TryRead_ReportsVersionImportAndProtectedLauncherHints()
     {
         var directory = Path.Combine(Path.GetTempPath(), "KiriScope.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -26,7 +26,6 @@ public sealed class KirikiriRuntimeExecutableProbeTests
             Assert.False(engine.HasProtectedLauncherHint);
             Assert.True(launcher.HasProtectedLauncherHint);
             Assert.False(launcher.ImportsVersionDll);
-            Assert.True(engine.RuntimeCapturePriority > launcher.RuntimeCapturePriority);
         }
         finally
         {

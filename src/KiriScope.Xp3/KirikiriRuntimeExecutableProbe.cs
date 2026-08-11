@@ -16,16 +16,6 @@ public sealed record KirikiriRuntimeExecutableProbe(
     bool HasProtectedLauncherHint,
     IReadOnlyList<string> SectionNames)
 {
-    /// <summary>
-    /// Higher values are safer candidates for the version.dll capture proxy. A direct import is
-    /// essential; protected launcher section names only break ties against otherwise equivalent
-    /// candidates, because they are a hint rather than a compatibility verdict.
-    /// </summary>
-    public int RuntimeCapturePriority =>
-        (ImportsVersionDll ? 1_000 : 0) +
-        (HasReadableImportDirectory ? 100 : 0) -
-        (HasProtectedLauncherHint ? 250 : 0);
-
     /// <summary>Returns a bounded, read-only probe result, or <see langword="null"/> for an unreadable or malformed file.</summary>
     public static KirikiriRuntimeExecutableProbe? TryRead(string path)
     {

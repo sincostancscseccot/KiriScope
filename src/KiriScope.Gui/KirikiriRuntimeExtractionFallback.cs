@@ -97,13 +97,13 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             }) ?? throw new InvalidOperationException("The staged KiriKiri executable could not be started.");
 
             var completionPath = Path.Combine(stagedRuntimeDirectory, CompletionFileName);
-            var captureCompleted = await WaitForCompletionAsync(completionPath, gameProcess, progress, cancellationToken).ConfigureAwait(false);
-            if (!captureCompleted)
+            var captureWait = await WaitForCompletionAsync(completionPath, gameProcess, progress, cancellationToken).ConfigureAwait(false);
+            if (!captureWait.Completed)
             {
                 return FailedCaptureResult(
                     input, category, outputDirectory, compatibility, plan,
                     "RUNTIME_CAPTURE_INCOMPLETE",
-                    "The game runtime ended or timed out before confirming all requested resources were captured.");
+                    $"The selected runtime ({layout.DisplayName}) ended or timed out before confirming all requested resources were captured. {captureWait.Description}");
             }
 
             var manifest = await ReadCaptureManifestAsync(
@@ -132,7 +132,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     "RUNTIME_CAPTURE_MISSING_RESOURCES",
                     $"The selected runtime ({layout.DisplayName}) enumerated {manifest.Expected.Count:N0} resource stream(s), " +
                     $"the proxy declared {manifest.Captured.Count:N0} captured stream(s), and {capturedFiles:N0} capture file(s) were present. " +
-                    $"{missingRequests.Length:N0} requested stream(s) were still missing.");
+                    $"{missingRequests.Length:N0} requested stream(s) were still missing. {captureWait.Description}");
             }
 
             progress?.Report("Classifying and moving verified runtime resource streams");
@@ -222,6 +222,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 results,
                 [.. discovery.Diagnostics, .. compatibility.Diagnostics,
                     Info("RUNTIME_CAPTURE_LAUNCH_TARGET", layout.Description),
+                    Info("RUNTIME_CAPTURE_PROCESS_CHAIN", captureWait.Description),
                     Info("RUNTIME_CAPTURE_VERIFIED", $"Enumerated, captured, and verified {manifest.Expected.Count:N0} resource stream(s) with the game's KiriKiri runtime."),
                     Info("RUNTIME_CAPTURE_OPAQUE_INDEX_PATHS", $"Captured {manifest.Expected.Count(static request => IsOpaqueCapturedPath(request.EntryName)):N0} resource stream(s) whose original path was unavailable under an explicit __opaque__ index path."),
                     Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NonResourceEntryCount:N0} non-resource or structurally invalid archive index entr{(plan.NonResourceEntryCount == 1 ? "y" : "ies")}.")]);
@@ -250,17 +251,16 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             {
                 probe.FullPath,
                 RuntimeDirectory = Path.GetDirectoryName(probe.FullPath)!,
-                probe.RuntimeCapturePriority,
                 probe.Length,
                 probe.ImportsVersionDll,
                 probe.HasProtectedLauncherHint,
             })
             .Where(candidate =>
                 discovery.Archives.All(archive => IsPathWithin(candidate.RuntimeDirectory, archive.SourcePath)))
-            .OrderByDescending(candidate => candidate.RuntimeCapturePriority)
-            .ThenByDescending(candidate => candidate.ImportsVersionDll)
-            .ThenBy(candidate => candidate.HasProtectedLauncherHint)
-            .ThenByDescending(candidate => candidate.Length)
+            // Compatibility must be based on the launcher that can actually start the installed
+            // game. Import metadata is recorded for diagnosis only: localized launchers often
+            // start a KiriKiri child process even when the original EXE cannot run by itself.
+            .OrderByDescending(candidate => candidate.Length)
             .ThenBy(candidate => candidate.FullPath, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         if (candidate is null)
@@ -510,27 +510,38 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
     private static string GetManifestKey(string captureRelativeDirectory, string entryName) =>
         $"{captureRelativeDirectory}|{entryName.Replace('\\', '/')}";
 
-    private static async Task<bool> WaitForCompletionAsync(string completionPath, Process process, IProgress<string>? progress, CancellationToken cancellationToken)
+    private static async Task<RuntimeCaptureWaitResult> WaitForCompletionAsync(
+        string completionPath,
+        Process process,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
     {
         var started = Stopwatch.StartNew();
+        var observedProcesses = new Dictionary<int, RuntimeProcessObservation>();
         while (started.Elapsed < CaptureTimeout)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var liveProcesses = GetLiveProcessTree(process.Id);
+            foreach (var observed in liveProcesses)
+            {
+                observedProcesses[observed.ProcessId] = observed;
+            }
+
             if (File.Exists(completionPath))
             {
-                return true;
+                return new RuntimeCaptureWaitResult(true, observedProcesses.Values.ToArray());
             }
 
-            if (process.HasExited)
+            if (liveProcesses.Count == 0)
             {
-                return false;
+                return new RuntimeCaptureWaitResult(false, observedProcesses.Values.ToArray());
             }
 
-            progress?.Report($"The game runtime is enumerating and decoding protected resources ({started.Elapsed:mm\\:ss})");
+            progress?.Report($"The game runtime is enumerating and decoding protected resources ({started.Elapsed:mm\\:ss}; {liveProcesses.Count} process(es) in launch chain)");
             await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken).ConfigureAwait(false);
         }
 
-        return false;
+        return new RuntimeCaptureWaitResult(false, observedProcesses.Values.ToArray());
     }
 
     private static async Task<RuntimeCaptureAnalysis> AnalyzeCapturedResourceAsync(
@@ -792,6 +803,101 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
         }
     }
 
+    private static IReadOnlyList<RuntimeProcessObservation> GetLiveProcessTree(int rootProcessId)
+    {
+        var snapshot = CreateToolhelp32Snapshot(Th32csSnapProcess, 0);
+        if (snapshot == InvalidSnapshotHandle)
+        {
+            return IsProcessAlive(rootProcessId)
+                ? [new RuntimeProcessObservation(rootProcessId, 0, "<launch process>")]
+                : Array.Empty<RuntimeProcessObservation>();
+        }
+
+        try
+        {
+            var entries = new List<ProcessEntry32>();
+            var entry = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            if (!Process32First(snapshot, ref entry))
+            {
+                return IsProcessAlive(rootProcessId)
+                    ? [new RuntimeProcessObservation(rootProcessId, 0, "<launch process>")]
+                    : Array.Empty<RuntimeProcessObservation>();
+            }
+
+            do
+            {
+                entries.Add(entry);
+                entry = new ProcessEntry32 { Size = (uint)Marshal.SizeOf<ProcessEntry32>() };
+            }
+            while (Process32Next(snapshot, ref entry));
+
+            var childrenByParent = entries
+                .GroupBy(static item => item.ParentProcessId)
+                .ToDictionary(static group => group.Key, static group => group.ToArray());
+            var result = new List<RuntimeProcessObservation>();
+            var pending = new Queue<int>();
+            var visited = new HashSet<int>();
+            pending.Enqueue(rootProcessId);
+            while (pending.Count > 0)
+            {
+                var processId = pending.Dequeue();
+                if (!visited.Add(processId))
+                {
+                    continue;
+                }
+
+                var entryForProcess = entries.FirstOrDefault(item => item.ProcessId == processId);
+                if (entryForProcess.ProcessId == 0)
+                {
+                    continue;
+                }
+
+                result.Add(new RuntimeProcessObservation(
+                    (int)entryForProcess.ProcessId,
+                    (int)entryForProcess.ParentProcessId,
+                    entryForProcess.ExecutableName));
+                if (!childrenByParent.TryGetValue(entryForProcess.ProcessId, out var children))
+                {
+                    continue;
+                }
+
+                foreach (var child in children)
+                {
+                    pending.Enqueue((int)child.ProcessId);
+                }
+            }
+
+            return result;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return IsProcessAlive(rootProcessId)
+                ? [new RuntimeProcessObservation(rootProcessId, 0, "<launch process>")]
+                : Array.Empty<RuntimeProcessObservation>();
+        }
+        finally
+        {
+            _ = CloseHandle(snapshot);
+        }
+    }
+
+    private static bool IsProcessAlive(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     private static void TryDeleteStageDirectory(string stageDirectory, string temporaryRoot)
     {
         try
@@ -819,6 +925,41 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
     private static KiriScopeDiagnostic Error(string code, string message) => new(code, DiagnosticSeverity.Error, message);
 
+    private const uint Th32csSnapProcess = 0x00000002;
+    private static readonly IntPtr InvalidSnapshotHandle = new(-1);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct ProcessEntry32
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public IntPtr DefaultHeapId;
+        public uint ModuleId;
+        public uint ThreadCount;
+        public uint ParentProcessId;
+        public int PriorityClassBase;
+        public uint Flags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string ExecutableName;
+    }
+
     private sealed record RuntimeLaunchLayout(
         string ExecutablePath,
         string RuntimeDirectory,
@@ -830,8 +971,17 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
         public string Description =>
             $"Runtime capture selected {DisplayName} " +
-            $"(direct VERSION.dll import: {(ImportsVersionDll ? "yes" : "no")}, " +
+            $"by launch compatibility (direct VERSION.dll import: {(ImportsVersionDll ? "yes" : "no")}, " +
             $"protected-launcher hint: {(HasProtectedLauncherHint ? "yes" : "no")}).";
+    }
+
+    private sealed record RuntimeProcessObservation(int ProcessId, int ParentProcessId, string ExecutableName);
+
+    private sealed record RuntimeCaptureWaitResult(bool Completed, IReadOnlyList<RuntimeProcessObservation> ObservedProcesses)
+    {
+        public string Description => ObservedProcesses.Count == 0
+            ? "No launch-process metadata could be observed."
+            : $"Observed launch chain: {string.Join(" -> ", ObservedProcesses.Select(static item => $"{item.ExecutableName} (PID {item.ProcessId}, parent {item.ParentProcessId})"))}.";
     }
 
     private sealed record CapturePlan(IReadOnlyList<CaptureArchivePlan> Archives)
