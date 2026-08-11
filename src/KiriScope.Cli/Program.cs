@@ -179,7 +179,12 @@ static async Task<int> RunAsync(string[] args)
             return await ExtractAsync(
                 schemeArchivePath,
                 schemeOutputDirectory,
-                new Xp3EntryExtractionOptions { ContentFilter = scheme.Filter },
+                new Xp3EntryExtractionOptions
+                {
+                    ContentFilter = scheme.Filter,
+                    VerifyAdler32AfterFilter = true,
+                    FallbackToVerifiedUnfilteredMarkedEntry = true,
+                },
                 scheme.Descriptor);
         }
         catch (ContentFilterException exception)
@@ -1094,10 +1099,20 @@ static async Task<int> UnpackGameAsync(string inputPath, string outputDirectory,
     try
     {
         var input = GameInput.FromPath(inputPath);
-        var resolvedKnowledgeRoot = knowledgeRoot ?? FindBundledKnowledgeRoot();
-        var options = resolvedKnowledgeRoot is null
+        var resolvedPluginRoot = knowledgeRoot ?? FindBundledPluginRoot();
+        var resolver = resolvedPluginRoot is not null && File.Exists(Path.Combine(resolvedPluginRoot, KnowledgeBaseLoader.ManifestFileName))
+            ? new KnowledgeGameCompatibilityResolver(resolvedPluginRoot)
+            : null;
+        var staticProfiles = resolvedPluginRoot is null
+            ? Array.Empty<StaticContentFilterCandidate>()
+            : await StaticContentFilterProfileLoader.LoadAsync(resolvedPluginRoot);
+        var options = resolver is null && staticProfiles.Count == 0
             ? null
-            : new GameExtractionOptions { CompatibilityResolver = new KnowledgeGameCompatibilityResolver(resolvedKnowledgeRoot) };
+            : new GameExtractionOptions
+            {
+                CompatibilityResolver = resolver,
+                StaticContentFilterCandidates = staticProfiles,
+            };
         var result = await GameExtractionService.ExtractAsync(input, category, outputDirectory, options);
         WriteJson(result);
         return result.HasErrors ? 3 : 0;
@@ -1117,6 +1132,18 @@ static async Task<int> UnpackGameAsync(string inputPath, string outputDirectory,
         Console.Error.WriteLine(exception.Message);
         return 3;
     }
+}
+
+static string? FindBundledPluginRoot()
+{
+    var candidates = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "plugins"),
+        Path.Combine(Environment.CurrentDirectory, "plugins"),
+    };
+    return candidates.FirstOrDefault(candidate =>
+        File.Exists(Path.Combine(candidate, KnowledgeBaseLoader.ManifestFileName)) ||
+        File.Exists(Path.Combine(candidate, StaticContentFilterProfileLoader.ManifestFileName)));
 }
 
 static string? FindBundledKnowledgeRoot()

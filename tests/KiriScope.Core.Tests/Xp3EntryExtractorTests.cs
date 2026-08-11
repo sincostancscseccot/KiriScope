@@ -31,6 +31,23 @@ public sealed class Xp3EntryExtractorTests
     }
 
     [Fact]
+    public void PlanOutputRelativePaths_PreservesAllDuplicateIndexEntries()
+    {
+        var entries = new[]
+        {
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+        };
+
+        var paths = Xp3EntryExtractor.PlanOutputRelativePaths(entries);
+
+        Assert.Equal(
+            ["characters/a.png", Path.Combine("characters", "a__duplicate-002.png"), Path.Combine("characters", "a__duplicate-003.png")],
+            paths);
+    }
+
+    [Fact]
     public async Task ExtractAsync_DecompressesACompressedSegment()
     {
         var original = Encoding.UTF8.GetBytes("compressed index and resource data");
@@ -186,6 +203,44 @@ public sealed class Xp3EntryExtractorTests
         Assert.False(result.Succeeded);
         Assert.Equal("XP3_ADLER32_MISMATCH", Assert.Single(result.Diagnostics).Code);
         Assert.NotEqual(0U, result.ActualAdler32);
+    }
+
+    [Fact]
+    public async Task ExtractToFileAsync_RetriesAMarkedPlainEntryOnlyWhenTheRawAdler32Matches()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KiriScope.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await using var archive = new MemoryStream("abc"u8.ToArray());
+            var entry = new Xp3Entry(
+                "script/startup.tjs",
+                true,
+                3,
+                3,
+                0x024D0127U,
+                [new Xp3Segment(false, 0, 3, 3)]);
+
+            var result = await Xp3EntryExtractor.ExtractToFileAsync(
+                archive,
+                entry,
+                directory,
+                entry.Name,
+                new Xp3EntryExtractionOptions
+                {
+                    ContentFilter = new RepeatingXorContentFilter([0xAA]),
+                    VerifyAdler32AfterFilter = true,
+                    FallbackToVerifiedUnfilteredMarkedEntry = true,
+                });
+
+            Assert.True(result.Succeeded);
+            Assert.Equal("abc", await File.ReadAllTextAsync(Path.Combine(directory, "script", "startup.tjs")));
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "XP3_MARKED_ENTRY_ACCEPTED_UNFILTERED");
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
     }
 
     [Fact]

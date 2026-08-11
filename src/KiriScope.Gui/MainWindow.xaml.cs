@@ -436,7 +436,11 @@ public partial class MainWindow : Window
         }
 
         foreach (var validation in result.ResourceValidations
-                     .Where(static item => item.DetectedCategory is not null && item.DetectedCategory != item.PathCategory || item.ValidationAttempted && !item.IsFormatValidated)
+                     .Where(static item =>
+                         item.DetectedCategory is not null &&
+                         item.PathCategory is not ResourceCategory.Other &&
+                         item.DetectedCategory != item.PathCategory ||
+                         item.ValidationAttempted && !item.IsFormatValidated)
                      .Take(20))
         {
             lines.Add($"验证 {validation.EntryName}：{validation.DetectedFormat}，{FormatDiagnostics(validation.Diagnostics)}");
@@ -475,12 +479,14 @@ public partial class MainWindow : Window
         var resolver = File.Exists(Path.Combine(root, KnowledgeBaseLoader.ManifestFileName))
             ? new KnowledgeGameCompatibilityResolver(root)
             : null;
+        var staticProfiles = await StaticContentFilterProfileLoader.LoadAsync(root, cancellationToken);
         var runtimeCaptureHelper = await BundledRuntimeCapture.ExtractAsync(cancellationToken);
-        return resolver is null && runtimeCaptureHelper is null
+        return resolver is null && staticProfiles.Count == 0 && runtimeCaptureHelper is null
             ? null
             : new GameExtractionOptions
             {
                 CompatibilityResolver = resolver,
+                StaticContentFilterCandidates = staticProfiles,
                 RuntimeExtractionFallback = runtimeCaptureHelper is null ? null : new KirikiriRuntimeExtractionFallback(runtimeCaptureHelper),
             };
     }

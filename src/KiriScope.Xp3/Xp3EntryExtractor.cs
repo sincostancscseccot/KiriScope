@@ -176,12 +176,15 @@ public static class Xp3EntryExtractor
         }
 
         var results = new List<Xp3EntryExtractionResult>(index.Entries.Count);
-        foreach (var entry in index.Entries)
+        var outputRelativePaths = PlanOutputRelativePaths(index.Entries);
+        for (var entryIndex = 0; entryIndex < index.Entries.Count; entryIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var entry = index.Entries[entryIndex];
             try
             {
-                results.Add(await ExtractToFileAsync(archive, entry, outputRoot, entry.Name, options, cancellationToken).ConfigureAwait(false));
+                var result = await ExtractToFileAsync(archive, entry, outputRoot, outputRelativePaths[entryIndex], options, cancellationToken).ConfigureAwait(false);
+                results.Add(WithOutputPathDiagnostic(result, entry.Name, outputRelativePaths[entryIndex]));
             }
             catch (ArgumentException exception)
             {
@@ -195,6 +198,43 @@ public static class Xp3EntryExtractor
             results.Count(static result => !result.Succeeded),
             results,
             index.Diagnostics);
+    }
+
+    /// <summary>
+    /// Produces stable, non-overwriting output paths for the XP3 entries in their index order.
+    /// The original path is retained for the first occurrence; duplicate paths receive a visible
+    /// suffix before the extension so no resource stream is silently lost on case-insensitive file systems.
+    /// </summary>
+    public static IReadOnlyList<string> PlanOutputRelativePaths(IReadOnlyList<Xp3Entry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var usedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var plannedPaths = new string[entries.Count];
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entryName = entries[index].Name;
+            if (usedPaths.Add(entryName))
+            {
+                plannedPaths[index] = entryName;
+                continue;
+            }
+
+            var directory = Path.GetDirectoryName(entryName) ?? string.Empty;
+            var fileName = Path.GetFileName(entryName);
+            var baseName = Path.GetFileNameWithoutExtension(fileName);
+            var extension = Path.GetExtension(fileName);
+            for (var duplicateNumber = 2; ; duplicateNumber++)
+            {
+                var candidate = Path.Combine(directory, $"{baseName}__duplicate-{duplicateNumber:D3}{extension}");
+                if (usedPaths.Add(candidate))
+                {
+                    plannedPaths[index] = candidate;
+                    break;
+                }
+            }
+        }
+
+        return plannedPaths;
     }
 
     /// <summary>Extracts one entry to a safe, non-overwriting path below an output root.</summary>
@@ -243,6 +283,38 @@ public static class Xp3EntryExtractor
                 options: FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 extractionResult = await ExtractAsync(archive, entry, output, options, cancellationToken).ConfigureAwait(false);
+                if (!extractionResult.Succeeded &&
+                    options?.FallbackToVerifiedUnfilteredMarkedEntry == true &&
+                    entry.IsMarkedEncrypted &&
+                    options.ContentFilter is not null &&
+                    extractionResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "XP3_ADLER32_MISMATCH"))
+                {
+                    output.Position = 0;
+                    output.SetLength(0);
+                    var unfilteredOptions = options with
+                    {
+                        ContentFilter = null,
+                        AllowUnfilteredMarkedEntries = true,
+                        VerifyAdler32 = true,
+                        VerifyAdler32AfterFilter = false,
+                        FallbackToVerifiedUnfilteredMarkedEntry = false,
+                    };
+                    extractionResult = await ExtractAsync(archive, entry, output, unfilteredOptions, cancellationToken).ConfigureAwait(false);
+                    if (extractionResult.Succeeded)
+                    {
+                        extractionResult = extractionResult with
+                        {
+                            Diagnostics =
+                            [
+                                .. extractionResult.Diagnostics,
+                                new KiriScopeDiagnostic(
+                                    "XP3_MARKED_ENTRY_ACCEPTED_UNFILTERED",
+                                    DiagnosticSeverity.Info,
+                                    "The marked entry did not match the active content filter, but its unfiltered bytes matched the XP3 Adler-32 and were accepted as plain content."),
+                            ],
+                        };
+                    }
+                }
                 if (!extractionResult.Succeeded)
                 {
                     return extractionResult;
@@ -270,6 +342,29 @@ public static class Xp3EntryExtractor
                 File.Delete(temporaryPath);
             }
         }
+    }
+
+    private static Xp3EntryExtractionResult WithOutputPathDiagnostic(
+        Xp3EntryExtractionResult result,
+        string originalEntryName,
+        string outputRelativePath)
+    {
+        if (!result.Succeeded || string.Equals(originalEntryName, outputRelativePath, StringComparison.Ordinal))
+        {
+            return result;
+        }
+
+        return result with
+        {
+            Diagnostics =
+            [
+                .. result.Diagnostics,
+                new KiriScopeDiagnostic(
+                    "XP3_OUTPUT_NAME_COLLISION_DISAMBIGUATED",
+                    DiagnosticSeverity.Info,
+                    $"A duplicate XP3 path was exported as '{outputRelativePath}' without replacing the earlier entry."),
+            ],
+        };
     }
 
     private static bool ValidateEntryLayout(Xp3Entry entry, long archiveLength, out KiriScopeDiagnostic diagnostic)

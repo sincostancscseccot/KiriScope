@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using KiriScope.Core.Diagnostics;
+using KiriScope.Filters.BuiltIn;
 using KiriScope.Resources;
 using KiriScope.Xp3;
 
@@ -213,6 +214,90 @@ public sealed class GameExtractionServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_DoesNotTreatAnExtensionlessPathAsAnIncorrectResourceCategory()
+    {
+        var root = CreateTemporaryRoot();
+        var gameDirectory = Path.Combine(root, "game");
+        var outputDirectory = Path.Combine(root, "output");
+        Directory.CreateDirectory(gameDirectory);
+        try
+        {
+            var png = PngRgbaEncoder.Encode(new RgbaImage(1, 1, [12, 34, 56, 255]));
+            await File.WriteAllBytesAsync(Path.Combine(gameDirectory, "data.xp3"), CreateArchive(
+            [
+                ("assets/6ecb3132a8fefc0632a2f6c3911ebc41", png),
+            ]));
+
+            var result = await GameExtractionService.ExtractAsync(
+                GameInput.FromPath(gameDirectory), ResourceCategory.All, outputDirectory);
+
+            Assert.Equal(1, result.RecognizedResourceCount);
+            Assert.Equal(0, result.CategoryMismatchCount);
+            var validation = Assert.Single(result.ResourceValidations);
+            Assert.Equal(Path.Combine("data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41.png"), validation.OutputRelativePath);
+            Assert.Equal(ResourceCategory.Images, validation.PathCategory);
+            Assert.True(File.Exists(Path.Combine(outputDirectory, "data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41.png")));
+            Assert.False(File.Exists(Path.Combine(outputDirectory, "data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41")));
+            Assert.DoesNotContain(validation.Diagnostics,
+                diagnostic => diagnostic.Code == "GAME_RESOURCE_CATEGORY_MISMATCH");
+            Assert.Contains(validation.Diagnostics,
+                diagnostic => diagnostic.Code == "GAME_RESOURCE_EXTENSION_ASSIGNED");
+        }
+        finally
+        {
+            DeleteTemporaryRoot(root);
+        }
+    }
+
+    [Fact]
+    public async Task ExtractAsync_SelectsAStaticFilterOnlyAfterCurrentInputAdler32Proofs()
+    {
+        var root = CreateTemporaryRoot();
+        var gameDirectory = Path.Combine(root, "game");
+        var outputDirectory = Path.Combine(root, "output");
+        Directory.CreateDirectory(gameDirectory);
+        try
+        {
+            var firstPlain = "first protected entry"u8.ToArray();
+            var secondPlain = "second protected entry"u8.ToArray();
+            await File.WriteAllBytesAsync(Path.Combine(gameDirectory, "data.xp3"), CreateArchive(
+            [
+                new ArchiveEntryFixture("script/startup.tjs", "bootstrap"u8.ToArray(), true, Adler32("bootstrap"u8)),
+                new ArchiveEntryFixture("script/first.tjs", Xor(firstPlain, [0xA5, 0x5A]), true, Adler32(firstPlain)),
+                new ArchiveEntryFixture("script/second.tjs", Xor(secondPlain, [0xA5, 0x5A]), true, Adler32(secondPlain)),
+            ]));
+            var candidate = new StaticContentFilterCandidate(
+                "test.static-xor",
+                "1.0.0",
+                "Test static XOR",
+                "synthetic test fixture",
+                new RepeatingXorContentFilter([0xA5, 0x5A]),
+                RequiredAdler32ProofCount: 2,
+                MaximumProbeEntriesPerArchive: 8,
+                MaximumProbeEntryBytes: 1024);
+
+            var result = await GameExtractionService.ExtractAsync(
+                GameInput.FromPath(gameDirectory),
+                ResourceCategory.All,
+                outputDirectory,
+                new GameExtractionOptions { StaticContentFilterCandidates = [candidate] });
+
+            Assert.False(result.HasErrors);
+            Assert.Equal(GameCompatibilityResolutionKind.Selected, result.Compatibility.Kind);
+            Assert.Equal("static-adler32-proof", result.Compatibility.Selected?.FingerprintId);
+            Assert.Equal(3, result.ExtractedEntryCount);
+            Assert.Equal(0, result.SkippedEntryCount);
+            Assert.Equal("bootstrap", await File.ReadAllTextAsync(Path.Combine(outputDirectory, "data", "script", "startup.tjs")));
+            Assert.Equal("first protected entry", await File.ReadAllTextAsync(Path.Combine(outputDirectory, "data", "script", "first.tjs")));
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "STATIC_FILTER_PROFILE_SELECTED");
+        }
+        finally
+        {
+            DeleteTemporaryRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task CliUnpack_ExportsTheRequestedCategoryFromAGameDirectory()
     {
         var root = CreateTemporaryRoot();
@@ -273,6 +358,11 @@ public sealed class GameExtractionServiceTests
 
     private static byte[] CreateArchive(IReadOnlyList<(string Name, byte[] Content)> entries)
     {
+        return CreateArchive(entries.Select(static entry => new ArchiveEntryFixture(entry.Name, entry.Content, false, null)).ToArray());
+    }
+
+    private static byte[] CreateArchive(IReadOnlyList<ArchiveEntryFixture> entries)
+    {
         const int archiveHeaderLength = 19;
         var dataLength = entries.Sum(static entry => entry.Content.Length);
         var dataOffsets = new long[entries.Count];
@@ -292,7 +382,7 @@ public sealed class GameExtractionServiceTests
                 using var info = new MemoryStream();
                 using (var infoWriter = new BinaryWriter(info, Encoding.Unicode, leaveOpen: true))
                 {
-                    infoWriter.Write(0U);
+                    infoWriter.Write(entry.IsMarkedEncrypted ? 1U : 0U);
                     infoWriter.Write((long)entry.Content.Length);
                     infoWriter.Write((long)entry.Content.Length);
                     infoWriter.Write((ushort)entry.Name.Length);
@@ -313,6 +403,10 @@ public sealed class GameExtractionServiceTests
                 {
                     WriteChunk(fileWriter, 0x6F666E69, info.ToArray());
                     WriteChunk(fileWriter, 0x6D676573, segments.ToArray());
+                    if (entry.Adler32 is { } adler32)
+                    {
+                        WriteChunk(fileWriter, 0x726C6461, BitConverter.GetBytes(adler32));
+                    }
                 }
 
                 WriteChunk(indexWriter, 0x656C6946, file.ToArray());
@@ -344,6 +438,33 @@ public sealed class GameExtractionServiceTests
         writer.Write((long)data.Length);
         writer.Write(data);
     }
+
+    private static uint Adler32(ReadOnlySpan<byte> input)
+    {
+        const uint modulo = 65521;
+        uint a = 1;
+        uint b = 0;
+        foreach (var value in input)
+        {
+            a = (a + value) % modulo;
+            b = (b + a) % modulo;
+        }
+
+        return (b << 16) | a;
+    }
+
+    private static byte[] Xor(ReadOnlySpan<byte> input, ReadOnlySpan<byte> key)
+    {
+        var output = input.ToArray();
+        for (var index = 0; index < output.Length; index++)
+        {
+            output[index] ^= key[index % key.Length];
+        }
+
+        return output;
+    }
+
+    private sealed record ArchiveEntryFixture(string Name, byte[] Content, bool IsMarkedEncrypted, uint? Adler32);
 
     private sealed class FailingRuntimeFallback : IGameRuntimeExtractionFallback
     {

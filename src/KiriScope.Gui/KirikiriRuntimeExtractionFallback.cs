@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using KiriScope.Core.Diagnostics;
 using KiriScope.Core.Evidence;
 using KiriScope.IO.Paths;
+using KiriScope.Resources;
 using KiriScope.Xp3;
 
 namespace KiriScope.Gui;
@@ -27,6 +28,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
     private const string CategoryFileName = "extract-resource-category.txt";
     private const string CompletionFileName = "capture-complete.txt";
     private const string ManifestFileName = "capture-manifest.txt";
+    private const long MaximumRuntimeValidationBytes = 64L * 1024 * 1024;
     private static readonly TimeSpan CaptureTimeout = TimeSpan.FromMinutes(25);
     private readonly string helperPath;
 
@@ -61,7 +63,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 "The runtime resource plan could not be formed safely. KiriScope did not fall back to raw static extraction.");
         }
 
-        if (!plan.HasCompleteResourceNames)
+        if (!plan.HasRuntimeEnumerableEntries)
         {
             return FailedRuntimePreflightResult(
                 input,
@@ -69,20 +71,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 outputDirectory,
                 compatibility,
                 discovery,
-                "The game's original paths could not be recovered for every XP3 entry. KiriScope refused to export opaque runtime streams as if they were decoded resources.");
-        }
-
-        var requestedResources = plan.GetSelectedRequests(category);
-        var duplicateResourcePathCount = plan.GetDuplicateResourcePathCount(category);
-        if (requestedResources.Count == 0)
-        {
-            return FailedRuntimePreflightResult(
-                input,
-                category,
-                outputDirectory,
-                compatibility,
-                discovery,
-                "No resources in the selected category were found after the XP3 paths were recovered.");
+                "No XP3 archive with a readable entry index was available for safe runtime enumeration.");
         }
 
         var temporaryRoot = Path.Combine(Path.GetTempPath(), "KiriScope", "runtime-capture");
@@ -96,10 +85,9 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             var stagedRuntimeDirectory = ResolveStagedPath(stageDirectory, input.InputPath, layout.RuntimeDirectory);
             var stagedExecutable = ResolveStagedPath(stageDirectory, input.InputPath, layout.ExecutablePath);
             await InstallRuntimeHelperAsync(stagedRuntimeDirectory, cancellationToken).ConfigureAwait(false);
-            await WriteArchiveCaptureListAsync(stagedRuntimeDirectory, plan.Archives, category, cancellationToken).ConfigureAwait(false);
-            await WriteDirectCaptureRequestsAsync(stagedRuntimeDirectory, requestedResources, cancellationToken).ConfigureAwait(false);
+            await WriteArchiveCaptureListAsync(stagedRuntimeDirectory, plan.RuntimeEnumerationArchives, category, cancellationToken).ConfigureAwait(false);
 
-            progress?.Report("Starting the game runtime to enumerate and decode protected resources");
+            progress?.Report("Starting the game runtime to enumerate and decode protected XP3 resources");
             gameProcess = Process.Start(new ProcessStartInfo(stagedExecutable)
             {
                 WorkingDirectory = stagedRuntimeDirectory,
@@ -144,7 +132,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     $"The game runtime completed, but {missingRequests.Length:N0} enumerated resource stream(s) were not captured.");
             }
 
-            progress?.Report("Moving verified resources to the selected export directory");
+            progress?.Report("Classifying and moving verified runtime resource streams");
             Directory.CreateDirectory(outputDirectory);
             var results = new List<GameArchiveExtractionResult>(plan.Archives.Count);
             foreach (var archive in plan.Archives)
@@ -153,24 +141,42 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     .Where(request => ReferenceEquals(request.Archive, archive))
                     .OrderBy(static request => request.EntryName, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
-                var selectedRequests = archiveRequests;
-                var entries = new List<Xp3EntryExtractionResult>(selectedRequests.Length);
-                foreach (var request in selectedRequests)
+                var entries = new List<Xp3EntryExtractionResult>(archiveRequests.Length);
+                var validations = new List<GameExtractedResourceValidation>(archiveRequests.Length);
+                foreach (var request in archiveRequests)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var sourcePath = GetCapturePath(stagedRuntimeDirectory, request);
-                    var outputPath = SafeOutputPath.Resolve(outputDirectory, Path.Combine(archive.CaptureRelativeDirectory, request.EntryName));
+                    var analysis = await AnalyzeCapturedResourceAsync(sourcePath, request.EntryName, cancellationToken).ConfigureAwait(false);
+                    if (!MatchesRuntimeCaptureCategory(analysis.Category, category))
+                    {
+                        continue;
+                    }
+
+                    var outputEntryName = BuildOutputEntryName(request.EntryName, analysis);
+                    var outputRelativePath = Path.Combine(archive.CaptureRelativeDirectory, outputEntryName);
+                    var outputPath = SafeOutputPath.Resolve(outputDirectory, outputRelativePath);
                     Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
                     await TransferCaptureAsync(sourcePath, outputPath, cancellationToken).ConfigureAwait(false);
                     entries.Add(new Xp3EntryExtractionResult(
                         request.EntryName,
-                        EvidenceStage.ContentUsable,
+                        analysis.Stage,
                         true,
                         new FileInfo(outputPath).Length,
                         null,
                         null,
-                        "KiriKiriRuntimeCapture",
+                        analysis.IsOpaquePath ? "KiriKiriRuntimeIndexCapture" : "KiriKiriRuntimeCapture",
                         Array.Empty<KiriScopeDiagnostic>()));
+                    validations.Add(new GameExtractedResourceValidation(
+                        request.EntryName,
+                        outputRelativePath,
+                        analysis.Category,
+                        analysis.Format,
+                        analysis.DetectedCategory,
+                        analysis.Stage,
+                        analysis.ValidationAttempted,
+                        analysis.IsFormatValidated,
+                        analysis.Diagnostics));
                 }
 
                 results.Add(new GameArchiveExtractionResult(
@@ -178,12 +184,30 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     true,
                     true,
                     archive.AllEntryCount,
-                    selectedRequests.Length,
                     entries.Count,
-                    0,
+                    entries.Count,
+                    archive.StructurallyInvalidEntryCount,
                     entries,
-                    Array.Empty<GameExtractedResourceValidation>(),
-                    [Info("RUNTIME_CAPTURE_ARCHIVE_VERIFIED", "Resources were opened by their recovered original paths and captured through the staged game runtime.")]));
+                    validations,
+                    archive.StructurallyInvalidEntryCount == 0
+                        ? [Info("RUNTIME_CAPTURE_ARCHIVE_VERIFIED", "Resources were opened by the staged game runtime and captured from its decoded XP3 streams.")]
+                        : [
+                            Info("RUNTIME_CAPTURE_ARCHIVE_VERIFIED", "Resources were opened by the staged game runtime and captured from its decoded XP3 streams."),
+                            Warning("RUNTIME_CAPTURE_INVALID_INDEX_ENTRIES_SKIPPED", $"Skipped {archive.StructurallyInvalidEntryCount:N0} structurally invalid XP3 index placeholder entr{(archive.StructurallyInvalidEntryCount == 1 ? "y" : "ies")}; it cannot describe a resource stream.")
+                        ]));
+            }
+
+            if (category != ResourceCategory.All && results.Sum(static result => result.ExtractedEntryCount) == 0)
+            {
+                return new ExtractionTaskResult(
+                    input,
+                    category,
+                    compatibility,
+                    outputDirectory,
+                    true,
+                    results,
+                    [.. discovery.Diagnostics, .. compatibility.Diagnostics,
+                        Error("RUNTIME_CAPTURE_CATEGORY_NO_MATCH", "Runtime enumeration succeeded, but none of the captured streams could be classified into the selected resource category.")]);
             }
 
             return new ExtractionTaskResult(
@@ -194,9 +218,9 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 true,
                 results,
                 [.. discovery.Diagnostics, .. compatibility.Diagnostics,
-                    Info("RUNTIME_CAPTURE_VERIFIED", $"Opened, captured, and verified {manifest.Expected.Count:N0} resource stream(s) by their recovered original paths with the game's KiriKiri runtime."),
-                    Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NoticeEntryCount:N0} non-resource archive notice entr{(plan.NoticeEntryCount == 1 ? "y" : "ies")}."),
-                    Info("RUNTIME_CAPTURE_DUPLICATE_PATHS_COLLAPSED", $"Collapsed {duplicateResourcePathCount:N0} duplicate XP3 index entries that resolve to an already requested original path.")]);
+                    Info("RUNTIME_CAPTURE_VERIFIED", $"Enumerated, captured, and verified {manifest.Expected.Count:N0} resource stream(s) with the game's KiriKiri runtime."),
+                    Info("RUNTIME_CAPTURE_OPAQUE_INDEX_PATHS", $"Captured {manifest.Expected.Count(static request => IsOpaqueCapturedPath(request.EntryName)):N0} resource stream(s) whose original path was unavailable under an explicit __opaque__ index path."),
+                    Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NonResourceEntryCount:N0} non-resource or structurally invalid archive index entr{(plan.NonResourceEntryCount == 1 ? "y" : "ies")}.")]);
         }
         finally
         {
@@ -256,7 +280,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 {
                     allEntryCount = index.Entries.Count;
                     entries = index.Entries
-                        .Select(static entry => new CaptureEntryPlan(entry.Name))
+                        .Select(static entry => new CaptureEntryPlan(entry.Name, !HasValidStaticLayout(entry)))
                         .ToArray();
                 }
             }
@@ -370,7 +394,10 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             foreach (var archive in archives)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await writer.WriteLineAsync($"{archive.RuntimeArchiveName}|{archive.CaptureRelativeDirectory}").ConfigureAwait(false);
+                // The native helper opens this known entry through the game's own storage API.
+                // That forces each selected XP3 archive to materialize even when the title's
+                // initial scene would not otherwise touch it (for example, video or CG packs).
+                await writer.WriteLineAsync($"{archive.RuntimeArchiveName}|{archive.CaptureRelativeDirectory}|{archive.ProbeEntryName}").ConfigureAwait(false);
             }
         }
 
@@ -433,8 +460,13 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
             var parts = line.Split('|', 3);
-            if (parts.Length != 3 || (parts[0] != "E" && parts[0] != "C") ||
+            if (parts.Length != 3 || (parts[0] != "E" && parts[0] != "C" && parts[0] != "F") ||
                 !archivesByCaptureDirectory.TryGetValue(parts[1], out var archive) || !IsSafeEntryName(parts[2]))
+            {
+                continue;
+            }
+
+            if (archive.IsStructurallyInvalidEntry(parts[2]))
             {
                 continue;
             }
@@ -444,7 +476,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             {
                 expected.TryAdd(key, new CaptureRequest(archive, parts[2].Replace('\\', '/')));
             }
-            else
+            else if (parts[0] == "C")
             {
                 captured.Add(key);
             }
@@ -483,6 +515,151 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
         return false;
     }
+
+    private static async Task<RuntimeCaptureAnalysis> AnalyzeCapturedResourceAsync(
+        string sourcePath,
+        string entryName,
+        CancellationToken cancellationToken)
+    {
+        var opaquePath = IsOpaqueCapturedPath(entryName);
+        ResourceCategory? pathCategory = opaquePath ? null : GameExtractionService.Classify(entryName);
+        try
+        {
+            var info = new FileInfo(sourcePath);
+            await using var content = new FileStream(
+                sourcePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                BufferSize,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var header = new byte[512];
+            var headerLength = await content.ReadAsync(header, cancellationToken).ConfigureAwait(false);
+            var format = ResourceFormatDetector.Detect(header.AsSpan(0, headerLength));
+            var detectedCategory = GetCategoryForFormat(format);
+            var category = detectedCategory ?? pathCategory ??
+                (LooksLikeRuntimeScript(header.AsSpan(0, headerLength)) ? ResourceCategory.Scripts : ResourceCategory.Other);
+
+            if (info.Length > MaximumRuntimeValidationBytes)
+            {
+                return new RuntimeCaptureAnalysis(
+                    category,
+                    format,
+                    detectedCategory,
+                    EvidenceStage.ContentUsable,
+                    false,
+                    false,
+                    opaquePath,
+                    [Info("RUNTIME_CAPTURE_VALIDATION_SIZE_LIMIT", $"Structural validation was skipped because the captured stream exceeds the {MaximumRuntimeValidationBytes:N0}-byte limit.")]);
+            }
+
+            if (format == ResourceFormat.Unknown)
+            {
+                return new RuntimeCaptureAnalysis(
+                    category,
+                    format,
+                    detectedCategory,
+                    EvidenceStage.ContentUsable,
+                    false,
+                    false,
+                    opaquePath,
+                    [Info("RUNTIME_CAPTURE_FORMAT_UNRECOGNIZED", "The runtime-decoded stream has no currently recognized content signature.")]);
+            }
+
+            content.Position = 0;
+            var score = await ResourceFormatScorer.ScoreAsync(content, cancellationToken).ConfigureAwait(false);
+            var diagnostics = new List<KiriScopeDiagnostic>(score.Diagnostics);
+            if (!opaquePath && detectedCategory is not null && detectedCategory != pathCategory)
+            {
+                diagnostics.Add(Warning(
+                    "RUNTIME_CAPTURE_CATEGORY_MISMATCH",
+                    $"The runtime-captured content was identified as {score.Format}, which does not match its recovered path category."));
+            }
+
+            return new RuntimeCaptureAnalysis(
+                category,
+                score.Format,
+                GetCategoryForFormat(score.Format),
+                score.Stage,
+                true,
+                score.IsAccepted,
+                opaquePath,
+                diagnostics);
+        }
+        catch (IOException exception)
+        {
+            return RuntimeCaptureAnalysis.Unavailable(opaquePath, [Warning("RUNTIME_CAPTURE_VALIDATION_READ_FAILED", exception.Message)]);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return RuntimeCaptureAnalysis.Unavailable(opaquePath, [Warning("RUNTIME_CAPTURE_VALIDATION_READ_FAILED", exception.Message)]);
+        }
+        catch (InvalidDataException exception)
+        {
+            return RuntimeCaptureAnalysis.Unavailable(opaquePath, [Warning("RUNTIME_CAPTURE_VALIDATION_FAILED", exception.Message)]);
+        }
+    }
+
+    private static bool MatchesRuntimeCaptureCategory(ResourceCategory detectedCategory, ResourceCategory selectedCategory) =>
+        selectedCategory == ResourceCategory.All || detectedCategory == selectedCategory;
+
+    private static string BuildOutputEntryName(string entryName, RuntimeCaptureAnalysis analysis)
+    {
+        if (!analysis.IsOpaquePath || Path.HasExtension(entryName))
+        {
+            return entryName;
+        }
+
+        var extension = analysis.Format switch
+        {
+            ResourceFormat.Png => ".png",
+            ResourceFormat.Tlg => ".tlg",
+            ResourceFormat.Psb => ".psb",
+            ResourceFormat.Pimg => ".pimg",
+            ResourceFormat.Ogg => ".ogg",
+            ResourceFormat.Wave => ".wav",
+            ResourceFormat.Jpeg => ".jpg",
+            ResourceFormat.Bmp => ".bmp",
+            _ => string.Empty,
+        };
+        return entryName + extension;
+    }
+
+    private static bool IsOpaqueCapturedPath(string entryName) =>
+        entryName.StartsWith("__opaque__/", StringComparison.OrdinalIgnoreCase) ||
+        entryName.StartsWith("__opaque__\\", StringComparison.OrdinalIgnoreCase);
+
+    private static bool LooksLikeRuntimeScript(ReadOnlySpan<byte> header)
+    {
+        if (header.Length >= 2 &&
+            ((header[0] == 0xff && header[1] == 0xfe) || (header[0] == 0xfe && header[1] == 0xff)))
+        {
+            return true;
+        }
+
+        if (header.Length >= 3 && header[0] == 0xfe && header[1] == 0xfe && header[2] == 0x01)
+        {
+            return true;
+        }
+
+        var printable = 0;
+        foreach (var value in header)
+        {
+            if (value is 0x09 or 0x0a or 0x0d || (value >= 0x20 && value <= 0x7e))
+            {
+                printable++;
+            }
+        }
+
+        return header.Length >= 32 && printable * 100 / header.Length >= 90;
+    }
+
+    private static ResourceCategory? GetCategoryForFormat(ResourceFormat format) => format switch
+    {
+        ResourceFormat.Png or ResourceFormat.Jpeg or ResourceFormat.Bmp or ResourceFormat.Tlg or ResourceFormat.Psb or ResourceFormat.Pimg => ResourceCategory.Images,
+        ResourceFormat.Ogg or ResourceFormat.Wave => ResourceCategory.Audio,
+        _ => null,
+    };
 
     private static async Task TransferCaptureAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
     {
@@ -655,12 +832,20 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
     private static KiriScopeDiagnostic Info(string code, string message) => new(code, DiagnosticSeverity.Info, message);
 
+    private static KiriScopeDiagnostic Warning(string code, string message) => new(code, DiagnosticSeverity.Warning, message);
+
     private static KiriScopeDiagnostic Error(string code, string message) => new(code, DiagnosticSeverity.Error, message);
 
     private sealed record RuntimeLaunchLayout(string ExecutablePath, string RuntimeDirectory);
 
     private sealed record CapturePlan(IReadOnlyList<CaptureArchivePlan> Archives)
     {
+        public IReadOnlyList<CaptureArchivePlan> RuntimeEnumerationArchives => Archives
+            .Where(static archive => archive.AllEntryCount > 0)
+            .ToArray();
+
+        public bool HasRuntimeEnumerableEntries => RuntimeEnumerationArchives.Count > 0;
+
         public bool HasCompleteResourceNames => Archives.Count > 0 &&
             Archives.All(static archive =>
                 archive.AllEntryCount > 0 &&
@@ -691,6 +876,9 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
         public int NoticeEntryCount => Archives.Sum(static archive =>
             archive.Entries.Count(static entry => IsSyntheticArchiveNotice(entry.EntryName)));
+
+        public int NonResourceEntryCount => Archives.Sum(static archive =>
+            archive.Entries.Count(static entry => IsSyntheticArchiveNotice(entry.EntryName) || entry.IsStructurallyInvalid));
     }
 
     private sealed record CaptureArchivePlan(
@@ -698,11 +886,52 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
         string RuntimeArchiveName,
         string CaptureRelativeDirectory,
         int AllEntryCount,
-        IReadOnlyList<CaptureEntryPlan> Entries);
+        IReadOnlyList<CaptureEntryPlan> Entries)
+    {
+        public string ProbeEntryName => Entries.FirstOrDefault(static entry => !entry.IsStructurallyInvalid)?.EntryName ?? Entries[0].EntryName;
 
-    private sealed record CaptureEntryPlan(string EntryName);
+        public int StructurallyInvalidEntryCount => Entries.Count(static entry => entry.IsStructurallyInvalid);
+
+        public bool IsStructurallyInvalidEntry(string entryName)
+        {
+            var originalEntryName = entryName.Replace('\\', '/');
+            var separator = originalEntryName.LastIndexOf('/');
+            if (separator >= 0)
+            {
+                originalEntryName = originalEntryName[(separator + 1)..];
+            }
+
+            // The native helper keeps opaque index names collision-safe as
+            // "00000000_<original-name>". Compare the original runtime name
+            // against the statically validated index record.
+            if (originalEntryName.Length > 9 && originalEntryName[8] == '_' &&
+                originalEntryName[..8].All(static character => character is >= '0' and <= '9'))
+            {
+                originalEntryName = originalEntryName[9..];
+            }
+
+            return Entries.Any(entry =>
+                entry.IsStructurallyInvalid && entry.EntryName.Equals(originalEntryName, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private sealed record CaptureEntryPlan(string EntryName, bool IsStructurallyInvalid);
 
     private sealed record CaptureRequest(CaptureArchivePlan Archive, string EntryName);
+
+    private sealed record RuntimeCaptureAnalysis(
+        ResourceCategory Category,
+        ResourceFormat Format,
+        ResourceCategory? DetectedCategory,
+        EvidenceStage Stage,
+        bool ValidationAttempted,
+        bool IsFormatValidated,
+        bool IsOpaquePath,
+        IReadOnlyList<KiriScopeDiagnostic> Diagnostics)
+    {
+        public static RuntimeCaptureAnalysis Unavailable(bool opaquePath, IReadOnlyList<KiriScopeDiagnostic> diagnostics) =>
+            new(ResourceCategory.Other, ResourceFormat.Unknown, null, EvidenceStage.ContentUsable, true, false, opaquePath, diagnostics);
+    }
 
     private static bool IsOpaqueIndexName(string value) =>
         value.Length == 32 && value.All(static character =>
@@ -712,6 +941,25 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
     private static bool IsSyntheticArchiveNotice(string value) =>
         value.StartsWith("$$$ This is a protected archive. $$$", StringComparison.Ordinal);
+
+    private static bool HasValidStaticLayout(Xp3Entry entry)
+    {
+        try
+        {
+            return entry.UnpackedSize >= 0 && entry.PackedSize >= 0 &&
+                entry.Segments.All(static segment =>
+                    segment.Offset >= 0 &&
+                    segment.UnpackedSize >= 0 &&
+                    segment.PackedSize >= 0 &&
+                    (segment.IsCompressed || segment.UnpackedSize == segment.PackedSize)) &&
+                entry.Segments.Aggregate(0L, static (total, segment) => checked(total + segment.UnpackedSize)) == entry.UnpackedSize &&
+                entry.Segments.Aggregate(0L, static (total, segment) => checked(total + segment.PackedSize)) == entry.PackedSize;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
 
     private sealed record CaptureManifest(IReadOnlyList<CaptureRequest> Expected, IReadOnlySet<string> Captured)
     {

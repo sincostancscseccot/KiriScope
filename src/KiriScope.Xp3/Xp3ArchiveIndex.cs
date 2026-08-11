@@ -16,4 +16,12 @@ public sealed record Xp3ArchiveIndex(
     /// </summary>
     public IReadOnlyDictionary<uint, string> NameMappings { get; init; } =
         new Dictionary<uint, string>();
+
+    /// <summary>
+    /// Optional version-3 XP3 filename mappings. Keys are the opaque lowercase MD5 aliases stored
+    /// in <c>info</c> sections, so this mapping remains unambiguous when several files share an
+    /// Adler-32 content checksum.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> HashedNameMappings { get; init; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 }

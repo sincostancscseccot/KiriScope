@@ -10,3 +10,5 @@
 - `builtin.cx-encryption`：KiriKiri CxEncryption 的 `standard`/`nana` 参数化实现；格式见 `docs/filters/CX_ENCRYPTION.md`。
 
 `reference-repeating-xor.scheme.json` 是可运行但不对应任何商业作品的最小示例。不要将命令行密钥或未证实的参数写入报告之外的共享方案库。
+
+`cx-9nine-kokonotsu.scheme.json` is registered through `../static-filter-profiles.json`. It is not selected by its descriptive name: the one-click unpack flow requires two independent Adler-32 proofs from marked entries in the input selected by the user. The profile is source-bound by SHA-256 in that manifest; changing its parameters requires a new revision and matching manifest hash.

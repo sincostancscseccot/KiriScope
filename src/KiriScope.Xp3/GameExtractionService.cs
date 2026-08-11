@@ -50,8 +50,25 @@ public static class GameExtractionService
         var compatibility = discovery.HasErrors
             ? GameCompatibilityResolution.NotConfigured
             : await ResolveCompatibilityAsync(input, discovery, options.CompatibilityResolver, cancellationToken).ConfigureAwait(false);
+        if (!discovery.HasErrors &&
+            compatibility.Kind is GameCompatibilityResolutionKind.NotConfigured or GameCompatibilityResolutionKind.NoMatch)
+        {
+            var staticCompatibility = await ProbeStaticContentFiltersAsync(input, discovery, options, cancellationToken).ConfigureAwait(false);
+            if (staticCompatibility is not null)
+            {
+                compatibility = staticCompatibility with
+                {
+                    Diagnostics = [.. compatibility.Diagnostics, .. staticCompatibility.Diagnostics],
+                };
+            }
+        }
         var effectiveEntryOptions = compatibility.Selected?.ContentFilter is { } contentFilter
-            ? (options.EntryExtractionOptions ?? new Xp3EntryExtractionOptions()) with { ContentFilter = contentFilter }
+            ? (options.EntryExtractionOptions ?? new Xp3EntryExtractionOptions()) with
+            {
+                ContentFilter = contentFilter,
+                VerifyAdler32AfterFilter = compatibility.Selected.FingerprintId == "static-adler32-proof" || options.EntryExtractionOptions?.VerifyAdler32AfterFilter == true,
+                FallbackToVerifiedUnfilteredMarkedEntry = compatibility.Selected.FingerprintId == "static-adler32-proof" || options.EntryExtractionOptions?.FallbackToVerifiedUnfilteredMarkedEntry == true,
+            }
             : options.EntryExtractionOptions;
         if (options.ProbeMarkedEntriesWithoutFilter &&
             (compatibility.Kind is GameCompatibilityResolutionKind.NotConfigured or GameCompatibilityResolutionKind.NoMatch) &&
@@ -306,23 +323,30 @@ public static class GameExtractionService
                 return new GameArchiveExtractionResult(archive.RelativePath, archive.IsPackaged, false, index.Entries.Count, 0, 0, 0, Array.Empty<Xp3EntryExtractionResult>(), Array.Empty<GameExtractedResourceValidation>(), index.Diagnostics);
             }
 
-            var selectedEntries = index.Entries.Where(entry => MatchesCategory(entry.Name, category)).ToArray();
-            var results = new List<Xp3EntryExtractionResult>(selectedEntries.Length);
+            var protectedNoticeCount = index.Entries.Count(static entry => IsProtectedArchiveNotice(entry.Name));
+            var selectedEntries = index.Entries
+                .Where(entry => !IsProtectedArchiveNotice(entry.Name) && MatchesCategory(entry.Name, category))
+                .ToArray();
             var archiveOutputPath = Path.ChangeExtension(archive.RelativePath, null) ?? archive.RelativePath;
-            foreach (var entry in selectedEntries)
+            var outputRelativePaths = Xp3EntryExtractor.PlanOutputRelativePaths(selectedEntries)
+                .Select(path => Path.Combine(archiveOutputPath, path))
+                .ToArray();
+            var results = new List<Xp3EntryExtractionResult>(selectedEntries.Length);
+            for (var entryIndex = 0; entryIndex < selectedEntries.Length; entryIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var entry = selectedEntries[entryIndex];
                 progress?.Report($"Extracting {archive.RelativePath}: {entry.Name}");
                 try
                 {
-                    var outputRelativePath = Path.Combine(archiveOutputPath, entry.Name);
-                    results.Add(await Xp3EntryExtractor.ExtractToFileAsync(
+                    var result = await Xp3EntryExtractor.ExtractToFileAsync(
                         inputStream,
                         entry,
                         outputRoot,
-                        outputRelativePath,
+                        outputRelativePaths[entryIndex],
                         entryExtractionOptions,
-                        cancellationToken).ConfigureAwait(false));
+                        cancellationToken).ConfigureAwait(false);
+                    results.Add(WithOutputPathDiagnostic(result, Path.Combine(archiveOutputPath, entry.Name), outputRelativePaths[entryIndex]));
                 }
                 catch (ArgumentException exception)
                 {
@@ -330,12 +354,13 @@ public static class GameExtractionService
                 }
             }
 
-            var resourceValidations = await ValidateExtractedResourcesAsync(
+            var validations = await ValidateExtractedResourcesAsync(
                 results,
-                archiveOutputPath,
+                outputRelativePaths,
                 outputRoot,
                 options,
                 cancellationToken).ConfigureAwait(false);
+            var resourceValidations = AssignDetectedFileExtensions(validations, outputRoot);
             return new GameArchiveExtractionResult(
                 archive.RelativePath,
                 archive.IsPackaged,
@@ -346,7 +371,9 @@ public static class GameExtractionService
                 results.Count(static result => !result.Succeeded),
                 results,
                 resourceValidations,
-                index.Diagnostics);
+                protectedNoticeCount == 0
+                    ? index.Diagnostics
+                    : [.. index.Diagnostics, Info("GAME_PROTECTED_ARCHIVE_NOTICE_SKIPPED", $"Skipped {protectedNoticeCount:N0} protected-archive notice entr{(protectedNoticeCount == 1 ? "y" : "ies")}; it does not describe a game resource.")]);
         }
         catch (InvalidDataException exception)
         {
@@ -437,6 +464,123 @@ public static class GameExtractionService
         }
     }
 
+    private static async Task<GameCompatibilityResolution?> ProbeStaticContentFiltersAsync(
+        GameInput input,
+        GameInputDiscoveryResult discovery,
+        GameExtractionOptions options,
+        CancellationToken cancellationToken)
+    {
+        var candidates = options.StaticContentFilterCandidates;
+        if (candidates is null || candidates.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var proofs = new List<string>(candidate.RequiredAdler32ProofCount);
+            foreach (var archive in discovery.Archives)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                string? temporaryPath = null;
+                try
+                {
+                    var archivePath = archive.SourcePath;
+                    if (archive.IsPackaged)
+                    {
+                        temporaryPath = await StagePackageArchiveAsync(input.InputPath, archive.SourcePath, options, cancellationToken).ConfigureAwait(false);
+                        archivePath = temporaryPath;
+                    }
+
+                    await using var archiveStream = new FileStream(
+                        archivePath, FileMode.Open, FileAccess.Read, FileShare.Read,
+                        bufferSize: CopyBufferSize,
+                        options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+                    var index = await Xp3ArchiveReader.ReadIndexAsync(archiveStream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    if (index.Stage < EvidenceStage.IndexParsed)
+                    {
+                        continue;
+                    }
+
+                    var attempted = 0;
+                    foreach (var entry in index.Entries.Where(static entry => entry.IsMarkedEncrypted && entry.Adler32 is not null && entry.UnpackedSize >= 0))
+                    {
+                        if (attempted++ >= candidate.MaximumProbeEntriesPerArchive || entry.UnpackedSize > candidate.MaximumProbeEntryBytes)
+                        {
+                            continue;
+                        }
+
+                        archiveStream.Position = 0;
+                        var verification = await Xp3EntryExtractor.ExtractAsync(
+                            archiveStream,
+                            entry,
+                            Stream.Null,
+                            new Xp3EntryExtractionOptions
+                            {
+                                ContentFilter = candidate.ContentFilter,
+                                VerifyAdler32 = true,
+                                VerifyAdler32AfterFilter = true,
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                        if (!verification.Succeeded || verification.ActualAdler32 != entry.Adler32)
+                        {
+                            continue;
+                        }
+
+                        proofs.Add($"{archive.RelativePath}:{entry.Name}:adler32={entry.Adler32:X8}");
+                        if (proofs.Count < candidate.RequiredAdler32ProofCount)
+                        {
+                            continue;
+                        }
+
+                        var selected = new GameCompatibilityCandidate(
+                            candidate.SchemeId,
+                            candidate.SchemeRevision,
+                            candidate.DisplayName,
+                            candidate.ContentFilter.Descriptor.Id,
+                            candidate.ContentFilter.Descriptor.Version,
+                            "static-adler32-proof",
+                            archive.RelativePath,
+                            "not-computed; per-entry Adler-32 proof",
+                            proofs,
+                            ["The current input"],
+                            candidate.ContentFilter);
+                        return new GameCompatibilityResolution(
+                            GameCompatibilityResolutionKind.Selected,
+                            selected,
+                            [selected],
+                            [Info(
+                                "STATIC_FILTER_PROFILE_SELECTED",
+                                $"Selected static profile '{candidate.SchemeId}@{candidate.SchemeRevision}' after {proofs.Count:N0} independently Adler-32-verified encrypted XP3 entries. Source: {candidate.SourceReference}")]);
+                    }
+                }
+                catch (InvalidDataException)
+                {
+                    // A malformed or unsupported archive is handled by the ordinary extraction report.
+                }
+                catch (IOException)
+                {
+                    // A transiently unreadable archive is handled by the ordinary extraction report.
+                }
+                finally
+                {
+                    if (temporaryPath is not null)
+                    {
+                        TryDeleteFile(temporaryPath);
+                        TryDeleteEmptyDirectory(Path.GetDirectoryName(temporaryPath)!);
+                    }
+                }
+            }
+        }
+
+        return new GameCompatibilityResolution(
+            GameCompatibilityResolutionKind.NoMatch,
+            null,
+            Array.Empty<GameCompatibilityCandidate>(),
+            [Info("STATIC_FILTER_PROFILE_NO_MATCH", "No bundled static filter profile produced the required Adler-32 proofs for this input.")]);
+    }
+
     private static async Task CopyExactlyAsync(Stream source, Stream destination, long expectedLength, CancellationToken cancellationToken)
     {
         var buffer = new byte[CopyBufferSize];
@@ -519,7 +663,7 @@ public static class GameExtractionService
 
     private static async Task<IReadOnlyList<GameExtractedResourceValidation>> ValidateExtractedResourcesAsync(
         IReadOnlyList<Xp3EntryExtractionResult> entryResults,
-        string archiveOutputPath,
+        IReadOnlyList<string> outputRelativePaths,
         string outputRoot,
         GameExtractionOptions options,
         CancellationToken cancellationToken)
@@ -530,10 +674,16 @@ public static class GameExtractionService
         }
 
         var validations = new List<GameExtractedResourceValidation>();
-        foreach (var entry in entryResults.Where(static result => result.Succeeded))
+        for (var entryIndex = 0; entryIndex < entryResults.Count; entryIndex++)
         {
+            var entry = entryResults[entryIndex];
+            if (!entry.Succeeded)
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            var outputRelativePath = Path.Combine(archiveOutputPath, entry.EntryName);
+            var outputRelativePath = outputRelativePaths[entryIndex];
             var outputPath = SafeOutputPath.Resolve(outputRoot, outputRelativePath);
             var pathCategory = Classify(entry.EntryName);
             try
@@ -577,7 +727,9 @@ public static class GameExtractionService
                 var score = await ResourceFormatScorer.ScoreAsync(content, cancellationToken).ConfigureAwait(false);
                 var detectedCategory = GetCategoryForFormat(score.Format);
                 var diagnostics = new List<KiriScopeDiagnostic>(score.Diagnostics);
-                if (detectedCategory is not null && detectedCategory != pathCategory)
+                if (detectedCategory is not null &&
+                    pathCategory is not ResourceCategory.Other &&
+                    detectedCategory != pathCategory)
                 {
                     diagnostics.Add(Warning(
                         "GAME_RESOURCE_CATEGORY_MISMATCH",
@@ -621,8 +773,122 @@ public static class GameExtractionService
         return validations;
     }
 
+    /// <summary>
+    /// Makes protected-index exports usable in Explorer without inventing an original path. When an
+    /// archive has only an opaque name but its decoded bytes identify a known format, retain that
+    /// opaque base name and append the signature-derived extension.
+    /// </summary>
+    private static IReadOnlyList<GameExtractedResourceValidation> AssignDetectedFileExtensions(
+        IReadOnlyList<GameExtractedResourceValidation> validations,
+        string outputRoot)
+    {
+        var normalized = new List<GameExtractedResourceValidation>(validations.Count);
+        foreach (var validation in validations)
+        {
+            if (Path.HasExtension(validation.OutputRelativePath) ||
+                GetSuggestedExtension(validation.DetectedFormat) is not { } extension)
+            {
+                normalized.Add(validation);
+                continue;
+            }
+
+            var sourcePath = SafeOutputPath.Resolve(outputRoot, validation.OutputRelativePath);
+            var renamedRelativePath = Path.Combine(
+                Path.GetDirectoryName(validation.OutputRelativePath) ?? string.Empty,
+                Path.ChangeExtension(Path.GetFileName(validation.OutputRelativePath), extension));
+            var destinationPath = SafeOutputPath.Resolve(outputRoot, renamedRelativePath);
+            try
+            {
+                if (!File.Exists(sourcePath) || File.Exists(destinationPath))
+                {
+                    normalized.Add(validation with
+                    {
+                        Diagnostics =
+                        [
+                            .. validation.Diagnostics,
+                            Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", "A signature-derived extension could not be assigned without replacing an existing file."),
+                        ],
+                    });
+                    continue;
+                }
+
+                File.Move(sourcePath, destinationPath, overwrite: false);
+                normalized.Add(validation with
+                {
+                    OutputRelativePath = renamedRelativePath,
+                    PathCategory = Classify(renamedRelativePath),
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Info("GAME_RESOURCE_EXTENSION_ASSIGNED", $"The opaque exported name was assigned the '{extension}' extension from its verified content signature."),
+                    ],
+                });
+            }
+            catch (IOException exception)
+            {
+                normalized.Add(validation with
+                {
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", exception.Message),
+                    ],
+                });
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                normalized.Add(validation with
+                {
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", exception.Message),
+                    ],
+                });
+            }
+        }
+
+        return normalized;
+    }
+
     private static bool HasSupportedResourceExtension(string entryName) => Path.GetExtension(entryName).ToLowerInvariant() is
         ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tlg" or ".tlg5" or ".tlg6" or ".psb" or ".pimg" or ".ogg" or ".wav";
+
+    private static string? GetSuggestedExtension(ResourceFormat format) => format switch
+    {
+        ResourceFormat.Png => ".png",
+        ResourceFormat.Tlg => ".tlg",
+        ResourceFormat.Psb => ".psb",
+        ResourceFormat.Pimg => ".pimg",
+        ResourceFormat.Ogg => ".ogg",
+        ResourceFormat.Wave => ".wav",
+        ResourceFormat.Jpeg => ".jpg",
+        ResourceFormat.Bmp => ".bmp",
+        _ => null,
+    };
+
+    private static bool IsProtectedArchiveNotice(string entryName) =>
+        entryName.StartsWith("$$$ This is a protected archive. $$$", StringComparison.Ordinal);
+
+    private static Xp3EntryExtractionResult WithOutputPathDiagnostic(
+        Xp3EntryExtractionResult result,
+        string expectedOutputRelativePath,
+        string outputRelativePath)
+    {
+        if (!result.Succeeded || string.Equals(expectedOutputRelativePath, outputRelativePath, StringComparison.Ordinal))
+        {
+            return result;
+        }
+
+        return result with
+        {
+            Diagnostics =
+            [
+                .. result.Diagnostics,
+                Info("GAME_OUTPUT_NAME_COLLISION_DISAMBIGUATED", $"A duplicate XP3 path was exported as '{outputRelativePath}' without replacing the earlier entry."),
+            ],
+        };
+    }
 
     private static ResourceCategory? GetCategoryForFormat(ResourceFormat format) => format switch
     {
@@ -647,6 +913,18 @@ public static class GameExtractionService
             options.MaximumResourceValidationBytes <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Game extraction limits must be positive and the per-entry package limit cannot exceed the total limit.");
+        }
+
+        foreach (var candidate in options.StaticContentFilterCandidates ?? Array.Empty<StaticContentFilterCandidate>())
+        {
+            if (candidate is null || string.IsNullOrWhiteSpace(candidate.SchemeId) ||
+                string.IsNullOrWhiteSpace(candidate.SchemeRevision) || string.IsNullOrWhiteSpace(candidate.DisplayName) ||
+                string.IsNullOrWhiteSpace(candidate.SourceReference) || candidate.ContentFilter is null ||
+                candidate.RequiredAdler32ProofCount <= 0 || candidate.MaximumProbeEntriesPerArchive <= 0 ||
+                candidate.MaximumProbeEntryBytes <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(options), "Static content-filter candidates must be complete and use positive probe limits.");
+            }
         }
     }
 
