@@ -84,11 +84,33 @@ public sealed record GameExtractionOptions
     public IGameCompatibilityResolver? CompatibilityResolver { get; init; }
 
     /// <summary>
+    /// Optional statically analysed filter profiles. When an exact compatibility record is unavailable,
+    /// KiriScope tests each profile against a small number of marked XP3 entries and selects it only
+    /// after every attempted entry decrypts to the Adler-32 recorded in that archive's index.
+    /// </summary>
+    public IReadOnlyList<StaticContentFilterCandidate>? StaticContentFilterCandidates { get; init; }
+
+    /// <summary>
     /// Optional runtime-assisted fallback for a complete KiriKiri game directory. Implementations must
     /// decline safely when their prerequisites are not present; the normal XP3 path then remains in use.
     /// </summary>
     public IGameRuntimeExtractionFallback? RuntimeExtractionFallback { get; init; }
 }
+
+/// <summary>
+/// One static content-filter profile eligible for verifier-driven automatic selection. The profile's
+/// title and source are descriptive only; selection is based solely on successful per-entry Adler-32
+/// proofs from the currently selected input.
+/// </summary>
+public sealed record StaticContentFilterCandidate(
+    string SchemeId,
+    string SchemeRevision,
+    string DisplayName,
+    string SourceReference,
+    IContentFilter ContentFilter,
+    int RequiredAdler32ProofCount = 2,
+    int MaximumProbeEntriesPerArchive = 32,
+    long MaximumProbeEntryBytes = 8L * 1024 * 1024);
 
 /// <summary>Terminal state of a compatibility lookup performed before one-click extraction.</summary>
 public enum GameCompatibilityResolutionKind
@@ -220,7 +242,10 @@ public sealed record ExtractionTaskResult(
 
     public int ValidationSkippedResourceCount => ResourceValidations.Count(static item => !item.ValidationAttempted);
 
-    public int CategoryMismatchCount => ResourceValidations.Count(static item => item.DetectedCategory is not null && item.DetectedCategory != item.PathCategory);
+    public int CategoryMismatchCount => ResourceValidations.Count(static item =>
+        item.DetectedCategory is not null &&
+        item.PathCategory is not ResourceCategory.Other &&
+        item.DetectedCategory != item.PathCategory);
 
     public bool HasErrors => Diagnostics.Any(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error) ||
         Archives.Any(static archive => !archive.IndexWasParsed);

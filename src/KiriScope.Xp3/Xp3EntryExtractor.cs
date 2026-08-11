@@ -243,6 +243,38 @@ public static class Xp3EntryExtractor
                 options: FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 extractionResult = await ExtractAsync(archive, entry, output, options, cancellationToken).ConfigureAwait(false);
+                if (!extractionResult.Succeeded &&
+                    options?.FallbackToVerifiedUnfilteredMarkedEntry == true &&
+                    entry.IsMarkedEncrypted &&
+                    options.ContentFilter is not null &&
+                    extractionResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "XP3_ADLER32_MISMATCH"))
+                {
+                    output.Position = 0;
+                    output.SetLength(0);
+                    var unfilteredOptions = options with
+                    {
+                        ContentFilter = null,
+                        AllowUnfilteredMarkedEntries = true,
+                        VerifyAdler32 = true,
+                        VerifyAdler32AfterFilter = false,
+                        FallbackToVerifiedUnfilteredMarkedEntry = false,
+                    };
+                    extractionResult = await ExtractAsync(archive, entry, output, unfilteredOptions, cancellationToken).ConfigureAwait(false);
+                    if (extractionResult.Succeeded)
+                    {
+                        extractionResult = extractionResult with
+                        {
+                            Diagnostics =
+                            [
+                                .. extractionResult.Diagnostics,
+                                new KiriScopeDiagnostic(
+                                    "XP3_MARKED_ENTRY_ACCEPTED_UNFILTERED",
+                                    DiagnosticSeverity.Info,
+                                    "The marked entry did not match the active content filter, but its unfiltered bytes matched the XP3 Adler-32 and were accepted as plain content."),
+                            ],
+                        };
+                    }
+                }
                 if (!extractionResult.Succeeded)
                 {
                     return extractionResult;

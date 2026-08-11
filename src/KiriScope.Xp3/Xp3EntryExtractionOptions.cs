@@ -18,6 +18,14 @@ public sealed record Xp3EntryExtractionOptions
     /// </summary>
     public bool AllowUnfilteredMarkedEntries { get; init; }
 
+    /// <summary>
+    /// When a supplied content filter fails its post-filter Adler-32 check, retry that marked entry
+    /// without a filter. The retry is accepted only when the raw decoded bytes independently match
+    /// the index checksum. This supports archives that mark a small bootstrap entry as protected even
+    /// though that entry is stored plainly.
+    /// </summary>
+    public bool FallbackToVerifiedUnfilteredMarkedEntry { get; init; }
+
     /// <summary>Validates Adler-32 for plain extracted content when the index supplies it.</summary>
     public bool VerifyAdler32 { get; init; } = true;
 

@@ -226,30 +226,36 @@ public static class BuiltInContentFilterSchemeLoader
 
         if (value.ValueKind == JsonValueKind.String)
         {
-            var hex = value.GetString();
+            var encoded = value.GetString() ?? string.Empty;
+            byte[] bytes;
             try
             {
-                var bytes = Convert.FromHexString(hex ?? string.Empty);
-                if (bytes.Length != 0x400 * sizeof(uint))
-                {
-                    throw Failure("FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID", "CxEncryption hexadecimal controlBlock must contain exactly 4096 bytes.");
-                }
-
-                var result = new uint[0x400];
-                for (var index = 0; index < result.Length; index++)
-                {
-                    result[index] = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(index * sizeof(uint), sizeof(uint)));
-                }
-
-                return result;
+                bytes = encoded.StartsWith("base64le:", StringComparison.OrdinalIgnoreCase)
+                    ? Convert.FromBase64String(encoded["base64le:".Length..])
+                    : Convert.FromHexString(encoded);
             }
             catch (FormatException)
             {
-                throw Failure("FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID", "CxEncryption hexadecimal controlBlock must be an even-length hexadecimal string.");
+                throw Failure(
+                    "FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID",
+                    "CxEncryption controlBlock must be hexadecimal or a base64le: string containing exactly 4096 bytes.");
             }
+
+            if (bytes.Length != 0x400 * sizeof(uint))
+            {
+                throw Failure("FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID", "CxEncryption controlBlock must contain exactly 4096 bytes.");
+            }
+
+            var result = new uint[0x400];
+            for (var index = 0; index < result.Length; index++)
+            {
+                result[index] = BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(index * sizeof(uint), sizeof(uint)));
+            }
+
+            return result;
         }
 
-        throw Failure("FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID", "CxEncryption controlBlock must be an array or a hexadecimal string.");
+        throw Failure("FILTER_SCHEME_CX_CONTROL_BLOCK_INVALID", "CxEncryption controlBlock must be an array, hexadecimal string, or base64le: string.");
     }
 
     private static JsonElement ReadProperty(JsonElement parent, string propertyName)

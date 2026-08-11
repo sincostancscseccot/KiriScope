@@ -4,9 +4,9 @@
 
 `src/KiriScope.Gui/Assets/KiriScope.RuntimeCapture.X86.dll` contains a modified build of the
 [KirikiriTools](https://github.com/arcusmaximus/KirikiriTools) `KirikiriUnencryptedArchive` proxy,
-Copyright (c) 2018 arcusmaximus, distributed under the MIT License. KiriScope's modification adds a
-completion marker for verified batch capture; the proxy is bundled only for the GUI's isolated KiriKiri
-runtime-capture fallback.
+Copyright (c) 2018 arcusmaximus, distributed under the MIT License. KiriScope's modifications add
+archive-driven enumeration, opaque-index-safe capture naming, validation manifests, and completion markers
+for verified batch capture; the proxy is bundled only for the GUI's isolated KiriKiri runtime-capture fallback.
 
 Copyright (c) 2018 arcusmaximus
 
@@ -31,6 +31,8 @@ SOFTWARE.
 ## CxEncryption filter
 
 `src/KiriScope.Filters.BuiltIn/CxContentFilter.cs` is an independently adapted implementation informed by the CxEncryption reader in [GARbro](https://github.com/morkt/GARbro), Copyright (c) 2014-2016 morkt, distributed under the MIT License. The MIT license text below applies to this adapted implementation as well.
+
+`plugins/schemes/cx-9nine-kokonotsu.scheme.json` contains a Cx parameter record derived from the [GARbro2](https://github.com/UserUnknownFactor/GARbro2) format database, Copyright (c) 2014-2025 morkt, UserUnknownFactor, crskycode and other contributors, distributed under the MIT License. KiriScope verifies this record against current-input XP3 Adler-32 values before it can be selected. The MIT license text below applies to this derived format record as well.
 
 ## Protected XP3 filename-list reader
 

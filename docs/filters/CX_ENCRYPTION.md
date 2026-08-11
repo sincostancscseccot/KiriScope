@@ -45,6 +45,12 @@ dotnet run --project .\src\KiriScope.Cli\KiriScope.Cli.csproj -- `
 
 `xp3 extract <archive> <output> --scheme <scheme.json>` 使用相同的方案加载器，并将方案描述和算法版本写入 JSON 报告。CxEncryption 方案必须有 XP3 索引提供的 Adler-32；缺失时会返回 `CX_ADLER32_REQUIRED`，不会生成伪成功输出。
 
+## Static profile encoding and automatic proof
+
+`controlBlock` accepts three equivalent encodings: an array of 1,024 uint32 values, an 8,192-character little-endian hexadecimal string, or `base64le:<base64>` containing exactly 4,096 little-endian bytes. The base64 form keeps checked-in Cx profiles reasonably reviewable without changing the decoded values.
+
+The ordinary game-unpack flow may load profiles listed in `plugins/static-filter-profiles.json`. A title label or a profile source never selects a filter by itself: KiriScope must decrypt the configured number of currently selected, marked XP3 entries and match each entry's recorded Adler-32. If that proof does not succeed, the profile is not used and the normal verified fallback path remains responsible for the result.
+
 ## 适用范围与来源
 
 实现以 GARbro 的 MIT 许可 CxEncryption 参考实现为依据进行了独立改写，许可证通知位于仓库根目录的 `THIRD_PARTY_NOTICES.md`。这只证明算法家族和参数格式的实现来源；任何具体作品支持声明仍必须绑定合法取得的样本版本、归档哈希、参数推导记录和格式验证结果。

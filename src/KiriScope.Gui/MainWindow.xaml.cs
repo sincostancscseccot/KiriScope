@@ -475,12 +475,14 @@ public partial class MainWindow : Window
         var resolver = File.Exists(Path.Combine(root, KnowledgeBaseLoader.ManifestFileName))
             ? new KnowledgeGameCompatibilityResolver(root)
             : null;
+        var staticProfiles = await StaticContentFilterProfileLoader.LoadAsync(root, cancellationToken);
         var runtimeCaptureHelper = await BundledRuntimeCapture.ExtractAsync(cancellationToken);
-        return resolver is null && runtimeCaptureHelper is null
+        return resolver is null && staticProfiles.Count == 0 && runtimeCaptureHelper is null
             ? null
             : new GameExtractionOptions
             {
                 CompatibilityResolver = resolver,
+                StaticContentFilterCandidates = staticProfiles,
                 RuntimeExtractionFallback = runtimeCaptureHelper is null ? null : new KirikiriRuntimeExtractionFallback(runtimeCaptureHelper),
             };
     }

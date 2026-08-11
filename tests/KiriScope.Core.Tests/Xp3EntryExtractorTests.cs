@@ -189,6 +189,44 @@ public sealed class Xp3EntryExtractorTests
     }
 
     [Fact]
+    public async Task ExtractToFileAsync_RetriesAMarkedPlainEntryOnlyWhenTheRawAdler32Matches()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KiriScope.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            await using var archive = new MemoryStream("abc"u8.ToArray());
+            var entry = new Xp3Entry(
+                "script/startup.tjs",
+                true,
+                3,
+                3,
+                0x024D0127U,
+                [new Xp3Segment(false, 0, 3, 3)]);
+
+            var result = await Xp3EntryExtractor.ExtractToFileAsync(
+                archive,
+                entry,
+                directory,
+                entry.Name,
+                new Xp3EntryExtractionOptions
+                {
+                    ContentFilter = new RepeatingXorContentFilter([0xAA]),
+                    VerifyAdler32AfterFilter = true,
+                    FallbackToVerifiedUnfilteredMarkedEntry = true,
+                });
+
+            Assert.True(result.Succeeded);
+            Assert.Equal("abc", await File.ReadAllTextAsync(Path.Combine(directory, "script", "startup.tjs")));
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "XP3_MARKED_ENTRY_ACCEPTED_UNFILTERED");
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ExtractAsync_ReportsAContentFilterFailureSeparatelyFromDecompression()
     {
         await using var archive = new MemoryStream([0x01, 0x02, 0x03]);
