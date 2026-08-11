@@ -126,10 +126,13 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 .ToArray();
             if (missingRequests.Length > 0)
             {
+                var capturedFiles = manifest.Expected.Count(request => File.Exists(GetCapturePath(stagedRuntimeDirectory, request)));
                 return FailedCaptureResult(
                     input, category, outputDirectory, compatibility, plan,
                     "RUNTIME_CAPTURE_MISSING_RESOURCES",
-                    $"The game runtime completed, but {missingRequests.Length:N0} enumerated resource stream(s) were not captured.");
+                    $"The selected runtime ({layout.DisplayName}) enumerated {manifest.Expected.Count:N0} resource stream(s), " +
+                    $"the proxy declared {manifest.Captured.Count:N0} captured stream(s), and {capturedFiles:N0} capture file(s) were present. " +
+                    $"{missingRequests.Length:N0} requested stream(s) were still missing.");
             }
 
             progress?.Report("Classifying and moving verified runtime resource streams");
@@ -218,6 +221,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                 true,
                 results,
                 [.. discovery.Diagnostics, .. compatibility.Diagnostics,
+                    Info("RUNTIME_CAPTURE_LAUNCH_TARGET", layout.Description),
                     Info("RUNTIME_CAPTURE_VERIFIED", $"Enumerated, captured, and verified {manifest.Expected.Count:N0} resource stream(s) with the game's KiriKiri runtime."),
                     Info("RUNTIME_CAPTURE_OPAQUE_INDEX_PATHS", $"Captured {manifest.Expected.Count(static request => IsOpaqueCapturedPath(request.EntryName)):N0} resource stream(s) whose original path was unavailable under an explicit __opaque__ index path."),
                     Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NonResourceEntryCount:N0} non-resource or structurally invalid archive index entr{(plan.NonResourceEntryCount == 1 ? "y" : "ies")}.")]);
@@ -239,24 +243,37 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
         var candidate = discovery.Executables
             .Select(relativePath => Path.Combine(input.InputPath, relativePath))
-            .Where(IsX86Executable)
-            .Select(path => new
+            .Select(KirikiriRuntimeExecutableProbe.TryRead)
+            .OfType<KirikiriRuntimeExecutableProbe>()
+            .Where(static probe => probe.IsX86)
+            .Select(probe => new
             {
-                ExecutablePath = path,
-                RuntimeDirectory = Path.GetDirectoryName(path)!,
-                Size = new FileInfo(path).Length,
+                probe.FullPath,
+                RuntimeDirectory = Path.GetDirectoryName(probe.FullPath)!,
+                probe.RuntimeCapturePriority,
+                probe.Length,
+                probe.ImportsVersionDll,
+                probe.HasProtectedLauncherHint,
             })
             .Where(candidate =>
                 discovery.Archives.All(archive => IsPathWithin(candidate.RuntimeDirectory, archive.SourcePath)))
-            .OrderByDescending(candidate => candidate.Size)
-            .ThenBy(candidate => candidate.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(candidate => candidate.RuntimeCapturePriority)
+            .ThenByDescending(candidate => candidate.ImportsVersionDll)
+            .ThenBy(candidate => candidate.HasProtectedLauncherHint)
+            .ThenByDescending(candidate => candidate.Length)
+            .ThenBy(candidate => candidate.FullPath, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
         if (candidate is null)
         {
             return false;
         }
 
-        layout = new RuntimeLaunchLayout(candidate.ExecutablePath, candidate.RuntimeDirectory);
+        layout = new RuntimeLaunchLayout(
+            candidate.FullPath,
+            candidate.RuntimeDirectory,
+            Path.GetRelativePath(input.InputPath, candidate.FullPath),
+            candidate.ImportsVersionDll,
+            candidate.HasProtectedLauncherHint);
         return true;
     }
 
@@ -750,40 +767,6 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             [.. discovery.Diagnostics, .. compatibility.Diagnostics, Error("RUNTIME_CAPTURE_PLAN_FAILED", message)]);
     }
 
-    private static bool IsX86Executable(string path)
-    {
-        try
-        {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            Span<byte> dosHeader = stackalloc byte[64];
-            if (stream.Read(dosHeader) != dosHeader.Length || dosHeader[0] != (byte)'M' || dosHeader[1] != (byte)'Z')
-            {
-                return false;
-            }
-
-            var peOffset = BitConverter.ToInt32(dosHeader.Slice(60, 4));
-            if (peOffset < 64 || peOffset > 1_048_576)
-            {
-                return false;
-            }
-
-            stream.Position = peOffset;
-            Span<byte> signatureAndMachine = stackalloc byte[6];
-            return stream.Read(signatureAndMachine) == signatureAndMachine.Length &&
-                signatureAndMachine[0] == (byte)'P' && signatureAndMachine[1] == (byte)'E' &&
-                signatureAndMachine[2] == 0 && signatureAndMachine[3] == 0 &&
-                BitConverter.ToUInt16(signatureAndMachine.Slice(4, 2)) == 0x014c;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
     private static void StopProcess(Process? process)
     {
         if (process is null)
@@ -836,7 +819,20 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
 
     private static KiriScopeDiagnostic Error(string code, string message) => new(code, DiagnosticSeverity.Error, message);
 
-    private sealed record RuntimeLaunchLayout(string ExecutablePath, string RuntimeDirectory);
+    private sealed record RuntimeLaunchLayout(
+        string ExecutablePath,
+        string RuntimeDirectory,
+        string RelativeExecutablePath,
+        bool ImportsVersionDll,
+        bool HasProtectedLauncherHint)
+    {
+        public string DisplayName => RelativeExecutablePath.Replace('\\', '/');
+
+        public string Description =>
+            $"Runtime capture selected {DisplayName} " +
+            $"(direct VERSION.dll import: {(ImportsVersionDll ? "yes" : "no")}, " +
+            $"protected-launcher hint: {(HasProtectedLauncherHint ? "yes" : "no")}).";
+    }
 
     private sealed record CapturePlan(IReadOnlyList<CaptureArchivePlan> Archives)
     {
