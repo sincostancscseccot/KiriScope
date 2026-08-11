@@ -2,6 +2,16 @@
 
 KiriScope 是面向 Windows 的 KiriKiri 资源解包器，提供 GUI 与 CLI。最终目标是让用户只需选择游戏目录、XP3 或完整游戏压缩包，导出资源类型和新的导出位置，即可完成自动发现、匹配、提取与汇总；分析、验证和方案库是支撑这一体验的内部能力。
 
+## 最新预发布版：0.1.0-preview.19
+
+`preview.19` 可从 [GitHub Releases](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.19) 下载单文件 Windows x64 GUI。它面向普通用户提供“游戏目录 / XP3 / 完整游戏 ZIP → 资源类型 → 新导出目录 → 开始解包”的流程，不会修改输入游戏或压缩包。
+
+- 对标准 XP3 可直接提取；对已内置并经当前输入验证的 Cx 配置，会自动尝试解码，不要求选择 scheme JSON。
+- XP3 v3 的 `hnfn` 原始路径表会优先用于恢复真实目录和文件名；同名条目使用稳定的 `__duplicate-NNN` 后缀，绝不静默覆盖。
+- 已在获授权的《9-nine-天色天歌天籁音》完整样本上验证：写入 9,982 个唯一资源路径，未产生 32 位哈希式乱码导出名。
+
+这不是“所有 KiriKiri 游戏均可自动解包”的承诺。不同作品可拥有自定义索引、过滤器、文件名表和密钥；未知或未验证的变体会报告并跳过，而不会把密文伪装成成功的资源。完整边界与后续工作见[当前可用能力](docs/user-guide/CAPABILITIES.md)和[产品契约](docs/product/ONE_CLICK_UNPACKER.md)。
+
 当前工作树已具备 XP3 读取/提取、资源验证、可配置内容过滤、静态分析和知识库等基础，并实现了标准内容的一键解包：可输入游戏目录、独立 XP3 或完整游戏 ZIP，并按资源类别导出。导出后会对可识别内容执行有上限的结构验证，并显式报告路径类别与内容签名不一致的条目。对于已纳入受信任知识库的方案，只有“已验证、精确 SHA-256、唯一命中”时才会自动应用；参考知识库不包含任何商业作品兼容项。第三阶段现已提供只读 `research package`，用于将授权游戏目录的 XP3 摘要、脱敏静态分析、知识扫描和用户明确提供的既有运行时报告引用归档为一个全新的 JSON。当前可用功能与限制请以能力矩阵为准。
 
 ## 最终产品目标（开发中）
@@ -14,7 +24,7 @@ KiriScope 是面向 Windows 的 KiriKiri 资源解包器，提供 GUI 与 CLI。
 
 - 想安装并完成第一次分析：[快速上手教程](docs/user-guide/GETTING_STARTED.md)。
 - 想确认当前版本已经实现的功能及其边界：[当前可用能力](docs/user-guide/CAPABILITIES.md)。
-- 想直接下载：前往 [0.1.0-preview.9 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.9)。
+- 想直接下载：前往 [0.1.0-preview.19 预发布](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.19)。
 
 ## 当前能力，一页看懂
 

@@ -1,5 +1,7 @@
 # KiriScope 文档目录
 
+当前可下载版本为 [0.1.0-preview.19](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.19)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
+
 ## 先读这里
 
 - **最终产品体验与验收标准**：[一键式 KiriKiri 解包器：产品契约](product/ONE_CLICK_UNPACKER.md)。它明确普通用户只需选择输入、资源类型和新导出位置；方案 JSON 仅是内部兼容数据。
