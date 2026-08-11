@@ -233,8 +233,15 @@ public sealed class GameExtractionServiceTests
 
             Assert.Equal(1, result.RecognizedResourceCount);
             Assert.Equal(0, result.CategoryMismatchCount);
-            Assert.DoesNotContain(result.ResourceValidations.Single().Diagnostics,
+            var validation = Assert.Single(result.ResourceValidations);
+            Assert.Equal(Path.Combine("data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41.png"), validation.OutputRelativePath);
+            Assert.Equal(ResourceCategory.Images, validation.PathCategory);
+            Assert.True(File.Exists(Path.Combine(outputDirectory, "data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41.png")));
+            Assert.False(File.Exists(Path.Combine(outputDirectory, "data", "assets", "6ecb3132a8fefc0632a2f6c3911ebc41")));
+            Assert.DoesNotContain(validation.Diagnostics,
                 diagnostic => diagnostic.Code == "GAME_RESOURCE_CATEGORY_MISMATCH");
+            Assert.Contains(validation.Diagnostics,
+                diagnostic => diagnostic.Code == "GAME_RESOURCE_EXTENSION_ASSIGNED");
         }
         finally
         {

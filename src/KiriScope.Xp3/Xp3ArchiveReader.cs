@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using KiriScope.Core.Diagnostics;
 using KiriScope.Core.Evidence;
@@ -19,6 +20,7 @@ public static class Xp3ArchiveReader
     private const uint InfoChunk = 0x6F666E69; // info
     private const uint SegmentChunk = 0x6D676573; // segm
     private const uint AdlerChunk = 0x726C6461; // adlr
+    private const uint HashedFilenameChunk = 0x6E666E68; // hnfn
     private const int NameListReferenceLength = sizeof(long) + sizeof(uint) + sizeof(uint);
     private const int SegmentRecordLength = 28;
 
@@ -123,18 +125,19 @@ public static class Xp3ArchiveReader
             return new Xp3ArchiveIndex(EvidenceStage.ContainerIdentified, indexOffset, true, Array.Empty<Xp3Entry>(), diagnostics);
         }
 
-        var nameMappings = await ReadNameMappingsAsync(indexData, input, options, diagnostics, cancellationToken).ConfigureAwait(false);
-        var entries = ApplyNameMappings(ParseEntries(indexData, input.Length, options, diagnostics), nameMappings);
+        var mappings = await ReadNameMappingsAsync(indexData, input, options, diagnostics, cancellationToken).ConfigureAwait(false);
+        var entries = ApplyNameMappings(ParseEntries(indexData, input.Length, options, diagnostics), mappings);
         var stage = diagnostics.Any(static item => item.Severity == DiagnosticSeverity.Error)
             ? EvidenceStage.ContainerIdentified
             : EvidenceStage.IndexParsed;
         return new Xp3ArchiveIndex(stage, indexOffset, indexKind == 1, entries, diagnostics)
         {
-            NameMappings = nameMappings,
+            NameMappings = mappings.Adler32,
+            HashedNameMappings = mappings.OpaqueAliases,
         };
     }
 
-    private static async Task<IReadOnlyDictionary<uint, string>> ReadNameMappingsAsync(
+    private static async Task<NameMappingSet> ReadNameMappingsAsync(
         byte[] indexData,
         Stream input,
         Xp3ReadOptions options,
@@ -142,6 +145,8 @@ public static class Xp3ArchiveReader
         CancellationToken cancellationToken)
     {
         var mappings = new Dictionary<uint, string>();
+        var opaqueAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        ParseHashedFilenameMappings(indexData, mappings, opaqueAliases, options.MaximumEntryCount, diagnostics);
         var references = FindNameListReferences(indexData, options, diagnostics);
         foreach (var reference in references)
         {
@@ -163,7 +168,76 @@ public static class Xp3ArchiveReader
             }
         }
 
-        return mappings;
+        return new NameMappingSet(mappings, opaqueAliases);
+    }
+
+    /// <summary>
+    /// XP3 version 3 may store a top-level <c>hnfn</c> record for each entry. The file's info
+    /// name is then an MD5 alias, while the record maps that entry's Adler-32 to its actual
+    /// UTF-16 path. This is a normal index feature, not a guess based on the alias text.
+    /// </summary>
+    private static void ParseHashedFilenameMappings(
+        ReadOnlySpan<byte> indexData,
+        IDictionary<uint, string> adler32Destination,
+        IDictionary<string, string> opaqueAliasDestination,
+        int maximumEntryCount,
+        List<KiriScopeDiagnostic> diagnostics)
+    {
+        var offset = 0;
+        var recordCount = 0;
+        while (offset < indexData.Length)
+        {
+            if (!TryReadChunkHeader(indexData, ref offset, out var chunkTag, out var chunkLength, out var chunkDataOffset, diagnostics))
+            {
+                return;
+            }
+
+            if (chunkTag == HashedFilenameChunk)
+            {
+                const int fixedLength = sizeof(uint) + sizeof(short);
+                if (recordCount >= maximumEntryCount)
+                {
+                    diagnostics.Add(Warning("XP3_HNFN_ENTRY_LIMIT_EXCEEDED", "The XP3 hashed filename-map entry limit was reached.", chunkDataOffset));
+                    return;
+                }
+
+                var record = indexData.Slice(chunkDataOffset, chunkLength);
+                if (record.Length < fixedLength)
+                {
+                    diagnostics.Add(Warning("XP3_HNFN_RECORD_INVALID", "A hashed filename-map record is truncated.", chunkDataOffset));
+                }
+                else
+                {
+                    var hash = BinaryPrimitives.ReadUInt32LittleEndian(record);
+                    var characterCount = BinaryPrimitives.ReadInt16LittleEndian(record.Slice(sizeof(uint), sizeof(short)));
+                    var nameByteLength = characterCount * sizeof(char);
+                    if (characterCount < 0 || nameByteLength > record.Length - fixedLength)
+                    {
+                        diagnostics.Add(Warning("XP3_HNFN_RECORD_INVALID", "A hashed filename-map record has an invalid UTF-16 name length.", chunkDataOffset));
+                    }
+                    else
+                    {
+                        var name = Encoding.Unicode.GetString(record.Slice(fixedLength, nameByteLength));
+                        if (string.IsNullOrWhiteSpace(name) || name.IndexOf('\0') >= 0)
+                        {
+                            diagnostics.Add(Warning("XP3_HNFN_RECORD_INVALID", "A hashed filename-map record has an invalid path.", chunkDataOffset));
+                        }
+                        else
+                        {
+                            // Version 3 stores the lowercase UTF-16 MD5 alias in each File/info
+                            // section. That alias is the unambiguous key; the Adler-32 is retained
+                            // only for compatibility with the legacy filename-map fallback.
+                            opaqueAliasDestination.TryAdd(ComputeOpaqueFilenameAlias(name), name);
+                            adler32Destination.TryAdd(hash, name);
+                        }
+                    }
+                }
+
+                recordCount++;
+            }
+
+            offset = checked(chunkDataOffset + chunkLength);
+        }
     }
 
     private static List<NameListReference> FindNameListReferences(
@@ -272,9 +346,9 @@ public static class Xp3ArchiveReader
 
     private static List<Xp3Entry> ApplyNameMappings(
         List<Xp3Entry> entries,
-        IReadOnlyDictionary<uint, string> nameMappings)
+        NameMappingSet mappings)
     {
-        if (nameMappings.Count == 0)
+        if (mappings.Adler32.Count == 0 && mappings.OpaqueAliases.Count == 0)
         {
             return entries;
         }
@@ -282,13 +356,21 @@ public static class Xp3ArchiveReader
         for (var index = 0; index < entries.Count; index++)
         {
             var entry = entries[index];
-            if (entry.Adler32 is { } hash && nameMappings.TryGetValue(hash, out var mappedName))
+            if (mappings.OpaqueAliases.TryGetValue(entry.Name, out var mappedName) ||
+                entry.Adler32 is { } hash && mappings.Adler32.TryGetValue(hash, out mappedName))
             {
                 entries[index] = entry with { Name = mappedName };
             }
         }
 
         return entries;
+    }
+
+    private static string ComputeOpaqueFilenameAlias(string name)
+    {
+        var bytes = Encoding.Unicode.GetBytes(name.ToLowerInvariant());
+        var hash = MD5.HashData(bytes);
+        return Convert.ToHexStringLower(hash);
     }
 
     private static List<Xp3Entry> ParseEntries(
@@ -567,6 +649,10 @@ public static class Xp3ArchiveReader
 
     private static KiriScopeDiagnostic Warning(string code, string message, long? offset = null) =>
         new(code, DiagnosticSeverity.Warning, message, offset);
+
+    private sealed record NameMappingSet(
+        IReadOnlyDictionary<uint, string> Adler32,
+        IReadOnlyDictionary<string, string> OpaqueAliases);
 
     private sealed record NameListReference(long Offset, uint UnpackedSize, uint PackedSize);
 

@@ -31,6 +31,23 @@ public sealed class Xp3EntryExtractorTests
     }
 
     [Fact]
+    public void PlanOutputRelativePaths_PreservesAllDuplicateIndexEntries()
+    {
+        var entries = new[]
+        {
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+            new Xp3Entry("characters/a.png", false, 0, 0, null, Array.Empty<Xp3Segment>()),
+        };
+
+        var paths = Xp3EntryExtractor.PlanOutputRelativePaths(entries);
+
+        Assert.Equal(
+            ["characters/a.png", Path.Combine("characters", "a__duplicate-002.png"), Path.Combine("characters", "a__duplicate-003.png")],
+            paths);
+    }
+
+    [Fact]
     public async Task ExtractAsync_DecompressesACompressedSegment()
     {
         var original = Encoding.UTF8.GetBytes("compressed index and resource data");

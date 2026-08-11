@@ -436,7 +436,11 @@ public partial class MainWindow : Window
         }
 
         foreach (var validation in result.ResourceValidations
-                     .Where(static item => item.DetectedCategory is not null && item.DetectedCategory != item.PathCategory || item.ValidationAttempted && !item.IsFormatValidated)
+                     .Where(static item =>
+                         item.DetectedCategory is not null &&
+                         item.PathCategory is not ResourceCategory.Other &&
+                         item.DetectedCategory != item.PathCategory ||
+                         item.ValidationAttempted && !item.IsFormatValidated)
                      .Take(20))
         {
             lines.Add($"验证 {validation.EntryName}：{validation.DetectedFormat}，{FormatDiagnostics(validation.Diagnostics)}");

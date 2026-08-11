@@ -323,23 +323,30 @@ public static class GameExtractionService
                 return new GameArchiveExtractionResult(archive.RelativePath, archive.IsPackaged, false, index.Entries.Count, 0, 0, 0, Array.Empty<Xp3EntryExtractionResult>(), Array.Empty<GameExtractedResourceValidation>(), index.Diagnostics);
             }
 
-            var selectedEntries = index.Entries.Where(entry => MatchesCategory(entry.Name, category)).ToArray();
-            var results = new List<Xp3EntryExtractionResult>(selectedEntries.Length);
+            var protectedNoticeCount = index.Entries.Count(static entry => IsProtectedArchiveNotice(entry.Name));
+            var selectedEntries = index.Entries
+                .Where(entry => !IsProtectedArchiveNotice(entry.Name) && MatchesCategory(entry.Name, category))
+                .ToArray();
             var archiveOutputPath = Path.ChangeExtension(archive.RelativePath, null) ?? archive.RelativePath;
-            foreach (var entry in selectedEntries)
+            var outputRelativePaths = Xp3EntryExtractor.PlanOutputRelativePaths(selectedEntries)
+                .Select(path => Path.Combine(archiveOutputPath, path))
+                .ToArray();
+            var results = new List<Xp3EntryExtractionResult>(selectedEntries.Length);
+            for (var entryIndex = 0; entryIndex < selectedEntries.Length; entryIndex++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var entry = selectedEntries[entryIndex];
                 progress?.Report($"Extracting {archive.RelativePath}: {entry.Name}");
                 try
                 {
-                    var outputRelativePath = Path.Combine(archiveOutputPath, entry.Name);
-                    results.Add(await Xp3EntryExtractor.ExtractToFileAsync(
+                    var result = await Xp3EntryExtractor.ExtractToFileAsync(
                         inputStream,
                         entry,
                         outputRoot,
-                        outputRelativePath,
+                        outputRelativePaths[entryIndex],
                         entryExtractionOptions,
-                        cancellationToken).ConfigureAwait(false));
+                        cancellationToken).ConfigureAwait(false);
+                    results.Add(WithOutputPathDiagnostic(result, Path.Combine(archiveOutputPath, entry.Name), outputRelativePaths[entryIndex]));
                 }
                 catch (ArgumentException exception)
                 {
@@ -347,12 +354,13 @@ public static class GameExtractionService
                 }
             }
 
-            var resourceValidations = await ValidateExtractedResourcesAsync(
+            var validations = await ValidateExtractedResourcesAsync(
                 results,
-                archiveOutputPath,
+                outputRelativePaths,
                 outputRoot,
                 options,
                 cancellationToken).ConfigureAwait(false);
+            var resourceValidations = AssignDetectedFileExtensions(validations, outputRoot);
             return new GameArchiveExtractionResult(
                 archive.RelativePath,
                 archive.IsPackaged,
@@ -363,7 +371,9 @@ public static class GameExtractionService
                 results.Count(static result => !result.Succeeded),
                 results,
                 resourceValidations,
-                index.Diagnostics);
+                protectedNoticeCount == 0
+                    ? index.Diagnostics
+                    : [.. index.Diagnostics, Info("GAME_PROTECTED_ARCHIVE_NOTICE_SKIPPED", $"Skipped {protectedNoticeCount:N0} protected-archive notice entr{(protectedNoticeCount == 1 ? "y" : "ies")}; it does not describe a game resource.")]);
         }
         catch (InvalidDataException exception)
         {
@@ -653,7 +663,7 @@ public static class GameExtractionService
 
     private static async Task<IReadOnlyList<GameExtractedResourceValidation>> ValidateExtractedResourcesAsync(
         IReadOnlyList<Xp3EntryExtractionResult> entryResults,
-        string archiveOutputPath,
+        IReadOnlyList<string> outputRelativePaths,
         string outputRoot,
         GameExtractionOptions options,
         CancellationToken cancellationToken)
@@ -664,10 +674,16 @@ public static class GameExtractionService
         }
 
         var validations = new List<GameExtractedResourceValidation>();
-        foreach (var entry in entryResults.Where(static result => result.Succeeded))
+        for (var entryIndex = 0; entryIndex < entryResults.Count; entryIndex++)
         {
+            var entry = entryResults[entryIndex];
+            if (!entry.Succeeded)
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
-            var outputRelativePath = Path.Combine(archiveOutputPath, entry.EntryName);
+            var outputRelativePath = outputRelativePaths[entryIndex];
             var outputPath = SafeOutputPath.Resolve(outputRoot, outputRelativePath);
             var pathCategory = Classify(entry.EntryName);
             try
@@ -757,8 +773,122 @@ public static class GameExtractionService
         return validations;
     }
 
+    /// <summary>
+    /// Makes protected-index exports usable in Explorer without inventing an original path. When an
+    /// archive has only an opaque name but its decoded bytes identify a known format, retain that
+    /// opaque base name and append the signature-derived extension.
+    /// </summary>
+    private static IReadOnlyList<GameExtractedResourceValidation> AssignDetectedFileExtensions(
+        IReadOnlyList<GameExtractedResourceValidation> validations,
+        string outputRoot)
+    {
+        var normalized = new List<GameExtractedResourceValidation>(validations.Count);
+        foreach (var validation in validations)
+        {
+            if (Path.HasExtension(validation.OutputRelativePath) ||
+                GetSuggestedExtension(validation.DetectedFormat) is not { } extension)
+            {
+                normalized.Add(validation);
+                continue;
+            }
+
+            var sourcePath = SafeOutputPath.Resolve(outputRoot, validation.OutputRelativePath);
+            var renamedRelativePath = Path.Combine(
+                Path.GetDirectoryName(validation.OutputRelativePath) ?? string.Empty,
+                Path.ChangeExtension(Path.GetFileName(validation.OutputRelativePath), extension));
+            var destinationPath = SafeOutputPath.Resolve(outputRoot, renamedRelativePath);
+            try
+            {
+                if (!File.Exists(sourcePath) || File.Exists(destinationPath))
+                {
+                    normalized.Add(validation with
+                    {
+                        Diagnostics =
+                        [
+                            .. validation.Diagnostics,
+                            Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", "A signature-derived extension could not be assigned without replacing an existing file."),
+                        ],
+                    });
+                    continue;
+                }
+
+                File.Move(sourcePath, destinationPath, overwrite: false);
+                normalized.Add(validation with
+                {
+                    OutputRelativePath = renamedRelativePath,
+                    PathCategory = Classify(renamedRelativePath),
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Info("GAME_RESOURCE_EXTENSION_ASSIGNED", $"The opaque exported name was assigned the '{extension}' extension from its verified content signature."),
+                    ],
+                });
+            }
+            catch (IOException exception)
+            {
+                normalized.Add(validation with
+                {
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", exception.Message),
+                    ],
+                });
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                normalized.Add(validation with
+                {
+                    Diagnostics =
+                    [
+                        .. validation.Diagnostics,
+                        Warning("GAME_RESOURCE_EXTENSION_NOT_ASSIGNED", exception.Message),
+                    ],
+                });
+            }
+        }
+
+        return normalized;
+    }
+
     private static bool HasSupportedResourceExtension(string entryName) => Path.GetExtension(entryName).ToLowerInvariant() is
         ".png" or ".jpg" or ".jpeg" or ".bmp" or ".tlg" or ".tlg5" or ".tlg6" or ".psb" or ".pimg" or ".ogg" or ".wav";
+
+    private static string? GetSuggestedExtension(ResourceFormat format) => format switch
+    {
+        ResourceFormat.Png => ".png",
+        ResourceFormat.Tlg => ".tlg",
+        ResourceFormat.Psb => ".psb",
+        ResourceFormat.Pimg => ".pimg",
+        ResourceFormat.Ogg => ".ogg",
+        ResourceFormat.Wave => ".wav",
+        ResourceFormat.Jpeg => ".jpg",
+        ResourceFormat.Bmp => ".bmp",
+        _ => null,
+    };
+
+    private static bool IsProtectedArchiveNotice(string entryName) =>
+        entryName.StartsWith("$$$ This is a protected archive. $$$", StringComparison.Ordinal);
+
+    private static Xp3EntryExtractionResult WithOutputPathDiagnostic(
+        Xp3EntryExtractionResult result,
+        string expectedOutputRelativePath,
+        string outputRelativePath)
+    {
+        if (!result.Succeeded || string.Equals(expectedOutputRelativePath, outputRelativePath, StringComparison.Ordinal))
+        {
+            return result;
+        }
+
+        return result with
+        {
+            Diagnostics =
+            [
+                .. result.Diagnostics,
+                Info("GAME_OUTPUT_NAME_COLLISION_DISAMBIGUATED", $"A duplicate XP3 path was exported as '{outputRelativePath}' without replacing the earlier entry."),
+            ],
+        };
+    }
 
     private static ResourceCategory? GetCategoryForFormat(ResourceFormat format) => format switch
     {
