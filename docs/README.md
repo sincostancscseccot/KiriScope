@@ -1,6 +1,6 @@
 # KiriScope 文档目录
 
-当前可下载版本为 [0.1.0-preview.21](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.21)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复，并改进了运行时回退的启动器链诊断；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
+当前可下载版本为 [0.1.0-preview.23](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.23)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复，并将运行时捕获改为从引擎线程的首次真实资源打开启动，避免后台线程重入风险与已解码流的重复过滤；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
 
 ## 先读这里
 
