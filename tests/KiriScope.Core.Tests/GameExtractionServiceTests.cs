@@ -43,6 +43,37 @@ public sealed class GameExtractionServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_ProtectedArchiveNoticeIsNotSelectedForExport()
+    {
+        var root = CreateTemporaryRoot();
+        var gameDirectory = Path.Combine(root, "game");
+        var outputDirectory = Path.Combine(root, "output");
+        Directory.CreateDirectory(gameDirectory);
+        try
+        {
+            const string notice = "$$$ This is a protected archive. $$$ Test notice.txt";
+            await File.WriteAllBytesAsync(Path.Combine(gameDirectory, "data.xp3"), CreateArchive(
+            [
+                (notice, "notice"u8.ToArray()),
+                ("script/startup.tjs", "startup"u8.ToArray()),
+            ]));
+
+            var result = await GameExtractionService.ExtractAsync(
+                GameInput.FromPath(gameDirectory), ResourceCategory.All, outputDirectory);
+
+            Assert.True(result.OutputDirectoryCreated);
+            Assert.Equal(1, result.SelectedEntryCount);
+            Assert.Equal(1, result.ExtractedEntryCount);
+            Assert.False(File.Exists(Path.Combine(outputDirectory, "data", notice)));
+            Assert.Equal("startup", await File.ReadAllTextAsync(Path.Combine(outputDirectory, "data", "script", "startup.tjs")));
+        }
+        finally
+        {
+            DeleteTemporaryRoot(root);
+        }
+    }
+
+    [Fact]
     public async Task ExtractAsync_GameDirectoryExportsOnlyTheRequestedCategory()
     {
         var root = CreateTemporaryRoot();

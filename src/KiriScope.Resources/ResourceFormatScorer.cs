@@ -44,6 +44,8 @@ public static class ResourceFormatScorer
             ResourceFormat.Psb => await FromPsbAsync(input, cancellationToken).ConfigureAwait(false),
             ResourceFormat.Pimg => IdentifiedOnly(format, "PIMG_FORMAT_IDENTIFIED", "PIMG signature identified, but no structural validator is available yet."),
             ResourceFormat.Ogg => IdentifiedOnly(format, "OGG_FORMAT_IDENTIFIED", "Ogg signature identified, but no structural validator is available yet."),
+            ResourceFormat.MpegProgramStream => IdentifiedOnly(format, "MPEG_PROGRAM_STREAM_IDENTIFIED", "MPEG Program Stream pack signature identified."),
+            ResourceFormat.OpenTypeFont => IdentifiedOnly(format, "OPENTYPE_FONT_IDENTIFIED", "OpenType font signature identified."),
             _ => new ResourceFormatScore(
                 ResourceFormat.Unknown,
                 EvidenceStage.Unidentified,

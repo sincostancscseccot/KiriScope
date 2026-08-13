@@ -11,4 +11,6 @@ public enum ResourceFormat
     Wave,
     Jpeg,
     Bmp,
+    MpegProgramStream,
+    OpenTypeFont,
 }

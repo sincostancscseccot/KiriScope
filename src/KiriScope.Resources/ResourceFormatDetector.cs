@@ -44,6 +44,19 @@ public static class ResourceFormatDetector
             return ResourceFormat.Bmp;
         }
 
+        // MPEG Program Stream pack headers begin with 00 00 01 BA.  Nine
+        // titles use this container for FMV resources with a .mpg extension.
+        if (header.Length >= 4 && header[0] == 0x00 && header[1] == 0x00 && header[2] == 0x01 && header[3] == 0xBA)
+        {
+            return ResourceFormat.MpegProgramStream;
+        }
+
+        if (header.StartsWith("OTTO"u8) ||
+            (header.Length >= 4 && header[0] == 0x00 && header[1] == 0x01 && header[2] == 0x00 && header[3] == 0x00))
+        {
+            return ResourceFormat.OpenTypeFont;
+        }
+
         return ResourceFormat.Unknown;
     }
 }

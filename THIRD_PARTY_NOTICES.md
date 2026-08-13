@@ -6,9 +6,11 @@
 [KirikiriTools](https://github.com/arcusmaximus/KirikiriTools) `KirikiriUnencryptedArchive` proxy,
 Copyright (c) 2018 arcusmaximus, distributed under the MIT License. KiriScope's modifications add
 archive-driven enumeration, opaque-index-safe capture naming, validation manifests, and completion markers
-for verified batch capture. The bundled build copies decoded runtime streams without applying the extraction filter a
-second time, starts its one-shot archive traversal only from an engine-thread storage open, records checksum-unconfirmed streams in its manifest, and avoids retrying a fully written stream solely because its XP3 index checksum differs; the proxy is bundled only for the GUI's
-isolated KiriKiri runtime-capture fallback.
+for verified batch capture. The bundled build resolves each effective resource through the game's registered
+storage media (including custom `archive://` media), starts its one-shot traversal only from an engine-thread
+storage open, records checksum-unconfirmed streams in its manifest, and never falls back to direct XP3-record
+bytes as if they were decoded content. The proxy is bundled only for the GUI's isolated KiriKiri runtime-capture
+fallback.
 
 Copyright (c) 2018 arcusmaximus
 
