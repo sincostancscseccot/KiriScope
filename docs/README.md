@@ -1,6 +1,6 @@
 # KiriScope 文档目录
 
-当前可下载版本为 [0.1.0-preview.24](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.24)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复，并把“已写入但索引校验非标准”的运行时流交由内容识别与结构验证处理，避免将完整捕获误报为失败；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
+当前可下载版本为 [0.1.0-preview.25](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.25)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复，并将“已写入但索引校验未确认”的运行时流完整记录、再交由内容识别、结构验证与落盘检查处理，避免将完整捕获误报为失败；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
 
 ## 先读这里
 

@@ -227,6 +227,9 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     Info("RUNTIME_CAPTURE_LAUNCH_TARGET", layout.Description),
                     Info("RUNTIME_CAPTURE_PROCESS_CHAIN", captureWait.Description),
                     Info("RUNTIME_CAPTURE_HELPER", RuntimeCaptureHelperDescription),
+                    Info(
+                        "RUNTIME_CAPTURE_INDEX_CHECKSUM_SUMMARY",
+                        $"The capture helper reported {manifest.Captured.Count:N0} checksum-confirmed and {manifest.IntegrityUnconfirmed.Count:N0} checksum-unconfirmed stream(s); every exported stream was present in the isolated capture directory."),
                     Info("RUNTIME_CAPTURE_VERIFIED", $"Enumerated, captured, and verified {manifest.Expected.Count:N0} resource stream(s) with the game's KiriKiri runtime."),
                     Info("RUNTIME_CAPTURE_OPAQUE_INDEX_PATHS", $"Captured {manifest.Expected.Count(static request => IsOpaqueCapturedPath(request.EntryName)):N0} resource stream(s) whose original path was unavailable under an explicit __opaque__ index path."),
                     Info("RUNTIME_CAPTURE_NOTICE_ENTRIES_SKIPPED", $"Skipped {plan.NonResourceEntryCount:N0} non-resource or structurally invalid archive index entr{(plan.NonResourceEntryCount == 1 ? "y" : "ies")}.")]);
