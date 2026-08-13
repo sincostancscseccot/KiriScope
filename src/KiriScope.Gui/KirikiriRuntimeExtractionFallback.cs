@@ -119,9 +119,12 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             }
 
             progress?.Report("Verifying captured resource streams");
+            var writtenCaptureKeys = manifest.Captured
+                .Concat(manifest.IntegrityUnconfirmed)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var missingRequests = manifest.Expected
                 .Where(request =>
-                    !manifest.Captured.Contains(GetManifestKey(request.Archive.CaptureRelativeDirectory, request.EntryName)) ||
+                    !writtenCaptureKeys.Contains(GetManifestKey(request.Archive.CaptureRelativeDirectory, request.EntryName)) ||
                     !File.Exists(GetCapturePath(stagedRuntimeDirectory, request)))
                 .ToArray();
             if (missingRequests.Length > 0)
@@ -131,7 +134,7 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
                     input, category, outputDirectory, compatibility, plan,
                     "RUNTIME_CAPTURE_MISSING_RESOURCES",
                     $"The selected runtime ({layout.DisplayName}) enumerated {manifest.Expected.Count:N0} resource stream(s), " +
-                    $"the proxy declared {manifest.Captured.Count:N0} captured stream(s), and {capturedFiles:N0} capture file(s) were present. " +
+                    $"the proxy declared {manifest.Captured.Count:N0} checksum-confirmed and {manifest.IntegrityUnconfirmed.Count:N0} checksum-unconfirmed captured stream(s), and {capturedFiles:N0} capture file(s) were present. " +
                     $"{missingRequests.Length:N0} requested stream(s) were still missing. {captureWait.Description} {RuntimeCaptureHelperDescription}");
             }
 
@@ -486,11 +489,12 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             StringComparer.OrdinalIgnoreCase);
         var expected = new Dictionary<string, CaptureRequest>(StringComparer.OrdinalIgnoreCase);
         var captured = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var integrityUnconfirmed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         using var reader = new StreamReader(manifestPath, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), detectEncodingFromByteOrderMarks: true);
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
         {
             var parts = line.Split('|', 3);
-            if (parts.Length != 3 || (parts[0] != "E" && parts[0] != "C" && parts[0] != "F") ||
+            if (parts.Length != 3 || (parts[0] != "E" && parts[0] != "C" && parts[0] != "V" && parts[0] != "F") ||
                 !archivesByCaptureDirectory.TryGetValue(parts[1], out var archive) || !IsSafeEntryName(parts[2]))
             {
                 continue;
@@ -510,9 +514,13 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
             {
                 captured.Add(key);
             }
+            else if (parts[0] == "V")
+            {
+                integrityUnconfirmed.Add(key);
+            }
         }
 
-        return new CaptureManifest(expected.Values.ToArray(), captured);
+        return new CaptureManifest(expected.Values.ToArray(), captured, integrityUnconfirmed);
     }
 
     private static string GetCapturePath(string runtimeDirectory, CaptureRequest request) =>
@@ -1120,8 +1128,14 @@ internal sealed class KirikiriRuntimeExtractionFallback : IGameRuntimeExtraction
         }
     }
 
-    private sealed record CaptureManifest(IReadOnlyList<CaptureRequest> Expected, IReadOnlySet<string> Captured)
+    private sealed record CaptureManifest(
+        IReadOnlyList<CaptureRequest> Expected,
+        IReadOnlySet<string> Captured,
+        IReadOnlySet<string> IntegrityUnconfirmed)
     {
-        public static CaptureManifest Empty { get; } = new(Array.Empty<CaptureRequest>(), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        public static CaptureManifest Empty { get; } = new(
+            Array.Empty<CaptureRequest>(),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
 }
