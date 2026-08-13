@@ -72,6 +72,9 @@ public sealed class PngValidatorTests
     [InlineData(new byte[] { 0x4F, 0x67, 0x67, 0x53 }, ResourceFormat.Ogg)]
     [InlineData(new byte[] { 0x50, 0x53, 0x42, 0x00 }, ResourceFormat.Psb)]
     [InlineData(new byte[] { 0x54, 0x4C, 0x47, 0x36, 0x2E, 0x30 }, ResourceFormat.Tlg)]
+    [InlineData(new byte[] { 0x00, 0x00, 0x01, 0xBA }, ResourceFormat.MpegProgramStream)]
+    [InlineData(new byte[] { 0x4F, 0x54, 0x54, 0x4F }, ResourceFormat.OpenTypeFont)]
+    [InlineData(new byte[] { 0x00, 0x01, 0x00, 0x00 }, ResourceFormat.OpenTypeFont)]
     public void Detect_RecognizesKnownResourceMagic(byte[] header, ResourceFormat expected)
     {
         Assert.Equal(expected, ResourceFormatDetector.Detect(header));

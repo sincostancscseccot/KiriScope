@@ -1,6 +1,6 @@
 # KiriScope 文档目录
 
-当前可下载版本为 [0.1.0-preview.25](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.25)。它已在一组获授权的受保护 XP3 样本上验证了真实路径恢复，并将“已写入但索引校验未确认”的运行时流完整记录、再交由内容识别、结构验证与落盘检查处理，避免将完整捕获误报为失败；适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
+当前可下载版本为 [0.1.0-preview.27](https://github.com/sincostancscseccot/KiriScope/releases/tag/v0.1.0-preview.27)。它会通过游戏自身的 KiriKiri 存储层获取运行时资源，不再把 XP3 原始密文字节报告为已验证导出；索引校验未确认的流必须经内容结构确认才会导出。运行时哈希名对应的非资源版权提示记录也会按静态索引映射明确排除，不再被误报为遗漏资源。适用范围和未知变体的限制以[当前可用能力](user-guide/CAPABILITIES.md)为准。
 
 ## 先读这里
 
