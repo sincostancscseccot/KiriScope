@@ -1,0 +1,43 @@
+name: Publish preview GUI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Preview version to build and attach to its existing GitHub Release.
+        required: true
+        default: 0.1.0-preview.27
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-preview-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-attach:
+    name: Build and attach Windows GUI
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build the self-contained GUI
+        shell: pwsh
+        run: .\packaging\Build-GuiSingleFile.ps1 -Version '${{ inputs.version }}'
+
+      - name: Attach the verified single-file GUI to the existing prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ inputs.version }}
+          ASSET: artifacts\releases\${{ inputs.version }}\KiriScope.Gui-${{ inputs.version }}-win-x64.exe
+        run: gh release upload $env:TAG $env:ASSET --clobber
