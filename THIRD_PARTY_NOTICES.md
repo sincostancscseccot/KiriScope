@@ -7,7 +7,7 @@
 Copyright (c) 2018 arcusmaximus, distributed under the MIT License. KiriScope's modifications add
 archive-driven enumeration, opaque-index-safe capture naming, validation manifests, and completion markers
 for verified batch capture. The bundled build copies decoded runtime streams without applying the extraction filter a
-second time, and starts its one-shot archive traversal only from an engine-thread storage open; the proxy is bundled only for the GUI's
+second time, starts its one-shot archive traversal only from an engine-thread storage open, and records non-standard XP3 index checksums separately from write failures; the proxy is bundled only for the GUI's
 isolated KiriKiri runtime-capture fallback.
 
 Copyright (c) 2018 arcusmaximus

@@ -1,9 +1,10 @@
 # 发布说明
 
-## 0.1.0-preview.23
+## 0.1.0-preview.24
 
 - 修复运行时捕获代理会对 `OriginalCreateStreamByIndex` 已返回的解码流再次调用作品提取过滤器的问题。该重复过滤会把受 Cx 保护的资源重新加密：文件虽已写入，却以错误的 Adler-32 被标记失败。
 - 移除代理的后台延迟枚举线程。它过去会从非 KiriKiri 引擎线程调用存储 API，可能在受保护启动器进入标题界面后造成闪退；捕获现改由引擎线程首次成功打开真实资源时启动一次，因此不依赖某些 Cx 变体从不调用的提取过滤器回调。
+- 对引擎已完整写入、但 XP3 `FileHash` 不等于标准 Adler-32 的流，记录新的“索引校验未确认”状态，而非伪报写入失败。KiriScope 仅在实际文件存在后继续进行内容识别、结构验证和导出。
 - `RUNTIME_CAPTURE_INCOMPLETE` 与 `RUNTIME_CAPTURE_MISSING_RESOURCES` 现在携带实际使用的内嵌 x86 辅助 DLL SHA-256，便于确认测试没有复用旧缓存。
 
 ## 0.1.0-preview.21
