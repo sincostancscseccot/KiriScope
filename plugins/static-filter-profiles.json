@@ -6,7 +6,7 @@
       "revision": "1.0.0",
       "displayName": "KiriKiri CxEncryption: 9-nine Kokonotsu family",
       "schemeFile": "schemes/cx-9nine-kokonotsu.scheme.json",
-      "schemeSha256": "9363c1c7d1ac2f4b29781bb2ec1e1107231076032177c33dc1af18f7faade0ad",
+      "schemeSha256": "bdae46eb8b48c6cd949438a9fc4093eb0707a755c750bf0edbabe6862d60a32",
       "algorithmId": "builtin.cx-encryption",
       "algorithmVersion": "1.0",
       "sourceReference": "GARbro2 Formats.dat: 9 -Nine- Kokonotsu Kokonoka Kokonoiro",
